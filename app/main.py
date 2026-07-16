@@ -19,6 +19,7 @@ from typing import Optional
 
 from app.core.config import get_settings
 from app.models.schemas import AthleteCreate, GradeDown, MakeupGrades, Position, SieveResult
+from app.services.film_grading import build_scouting_prompt
 from app.services.makeup_grade import average_makeup_grade, grade_down
 from app.services.metric_sieve import run_sieve
 
@@ -39,19 +40,6 @@ ai_client = genai.Client()
 Path(settings.UPLOAD_TMP_DIR).mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTS = (".mp4", ".mov", ".avi")
-
-
-def _build_scouting_prompt(position: str) -> str:
-    return f"""
-    You are an elite collegiate personnel director evaluating a prospect's film clip.
-    The athlete plays the position of: {position}.
-    Analyze the film and return a structured JSON object containing:
-    1. physical_projection (frame estimation, length, operational weight)
-    2. explosive_traits (hip fluidity, vertical break-on-ball, acceleration windows)
-    3. mechanics_grade (scale 1-10 based on standard competitive technique)
-    4. situational_attributes (on-field spatial awareness, contact balance)
-    Return ONLY the JSON object, no prose.
-    """
 
 
 @app.get("/api/v1/health")
@@ -110,7 +98,7 @@ async def analyze_player_film(
 
         response = ai_client.models.generate_content(
             model=settings.GEMINI_MODEL,
-            contents=[video_file, _build_scouting_prompt(position.value)],
+            contents=[video_file, build_scouting_prompt(position)],
             config=types.GenerateContentConfig(response_mime_type="application/json"),
         )
 
@@ -119,7 +107,13 @@ async def analyze_player_film(
         except (json.JSONDecodeError, TypeError):
             analysis = {"raw": response.text}
 
-        return {"success": True, "position": position.value, "analysis": analysis}
+        return {
+            "success": True,
+            "position": position.value,
+            "analysis": analysis,
+            "film_grades": analysis.get("film_grades", {}) if isinstance(analysis, dict) else {},
+            "flags": analysis.get("flags", []) if isinstance(analysis, dict) else [],
+        }
 
     except HTTPException:
         raise
@@ -169,4 +163,6 @@ async def truth_report(
         "metric_sieve": sieve.model_dump(),
         "makeup_grade": makeup.model_dump() if makeup else None,
         "film_analysis": film["analysis"],
+        "film_grades": film["film_grades"],
+        "film_flags": film["flags"],
     }
