@@ -1,0 +1,34 @@
+# TRU Scouting Engine
+
+## Structure
+```
+tru-scouting-engine/
+├── .env.example              # env mapping (copy to .env)
+├── requirements.txt
+├── db/
+│   └── init_schema.sql       # Module 5 — PostgreSQL schema + seeded position matrix
+├── scripts/                  # (migrations / batch jobs)
+└── app/
+    ├── main.py               # Modules 1 & 4 — Gemini ingestion + Truth Report routes
+    ├── core/
+    │   └── config.py         # typed .env loader
+    ├── models/
+    │   └── schemas.py        # Pydantic validation models
+    ├── services/
+    │   └── metric_sieve.py   # Modules 2 & 3 — positional matrices as code
+    └── routers/              # (split routes here as the API grows)
+```
+
+## Run it
+```bash
+cp .env.example .env          # add your GEMINI_API_KEY + DB password
+pip install -r requirements.txt
+psql -U tru_admin -d tru_scouting -f db/init_schema.sql
+uvicorn app.main:app --reload
+```
+
+## Endpoints
+- `GET  /api/v1/health`
+- `POST /api/v1/scout/metric-sieve`   — thresholds only, no film
+- `POST /api/v1/scout/analyze-film`   — Gemini native video upload
+- `POST /api/v1/scout/truth-report`   — sieve + film combined
