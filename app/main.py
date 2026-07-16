@@ -15,8 +15,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
 
+from typing import Optional
+
 from app.core.config import get_settings
-from app.models.schemas import AthleteCreate, Position, SieveResult
+from app.models.schemas import AthleteCreate, GradeDown, MakeupGrades, Position, SieveResult
+from app.services.makeup_grade import average_makeup_grade, grade_down
 from app.services.metric_sieve import run_sieve
 
 settings = get_settings()
@@ -74,6 +77,18 @@ async def metric_sieve(athlete: AthleteCreate):
     )
 
 
+@app.post("/api/v1/scout/makeup-grade", response_model=GradeDown)
+async def makeup_grade(grades: MakeupGrades):
+    """Module 6: Profile & Makeup rubric — grades Size, Athletic Ability, Play
+    History, Play Style, and Character against the P4 standard, then shows
+    what that same overall grade equates to at each easier classification
+    level (Group of 5, FCS, D2/D3/NAIA/JUCO)."""
+    overall = average_makeup_grade(grades)
+    if overall is None:
+        raise HTTPException(status_code=422, detail="At least one category must be graded.")
+    return grade_down(overall)
+
+
 @app.post("/api/v1/scout/analyze-film")
 async def analyze_player_film(
     file: UploadFile = File(...),
@@ -120,13 +135,24 @@ async def truth_report(
     file: UploadFile = File(...),
     position: Position = Form(Position.DB),
     athlete_json: str = Form(..., description="AthleteCreate payload as JSON string"),
+    makeup_json: Optional[str] = Form(None, description="MakeupGrades payload as JSON string"),
 ):
     """Module 4: Truth Report Panel — combines the metric sieve (hard laser
-    thresholds) with Gemini film analysis into one user-facing evaluation."""
+    thresholds), the Profile & Makeup grade-down, and Gemini film analysis
+    into one user-facing evaluation."""
     try:
         athlete = AthleteCreate(**json.loads(athlete_json))
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Bad athlete payload: {e}")
+
+    makeup: Optional[GradeDown] = None
+    if makeup_json:
+        try:
+            overall = average_makeup_grade(MakeupGrades(**json.loads(makeup_json)))
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Bad makeup payload: {e}")
+        if overall is not None:
+            makeup = grade_down(overall)
 
     sieve = await metric_sieve(athlete)
     film = await analyze_player_film(file=file, position=position)
@@ -136,9 +162,11 @@ async def truth_report(
         "athlete": f"{athlete.first_name} {athlete.last_name}",
         "position": position.value,
         "projected_tier": sieve.tier.value,
+        "qualifying_tiers": [t.value for t in sieve.qualifying_tiers],
         "hard_metrics_passed": sieve.hard_metrics_passed,
         "is_game_changer": sieve.is_game_changer,
         "game_changer_reason": sieve.game_changer_reason,
         "metric_sieve": sieve.model_dump(),
+        "makeup_grade": makeup.model_dump() if makeup else None,
         "film_analysis": film["analysis"],
     }

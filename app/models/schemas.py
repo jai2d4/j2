@@ -29,6 +29,23 @@ class Tier(str, Enum):
     UNRANKED = "UNRANKED"
 
 
+class Rank(str, Enum):
+    """Qualitative trait/makeup grade, P4-standard — best to worst."""
+    GAME_CHANGER = "GAME_CHANGER"
+    ALL_CONF = "ALL_CONF"
+    WIN_PLUS = "WIN_PLUS"
+    WIN = "WIN"
+    WIN_MINUS = "WIN_MINUS"
+    NGE = "NGE"
+
+
+# Best-to-worst order, used for averaging and for the grade-down shift.
+RANK_ORDER: list[Rank] = [
+    Rank.GAME_CHANGER, Rank.ALL_CONF, Rank.WIN_PLUS,
+    Rank.WIN, Rank.WIN_MINUS, Rank.NGE,
+]
+
+
 class FilmStatus(str, Enum):
     PENDING = "pending"
     PROCESSING = "processing"
@@ -76,8 +93,27 @@ class SieveResult(BaseModel):
     tier: Tier
     checks: list[MetricCheck]
     hard_metrics_passed: bool
+    qualifying_tiers: list[Tier] = []
     is_game_changer: bool = False
     game_changer_reason: Optional[str] = None
+
+
+class MakeupGrades(BaseModel):
+    """Profile & Makeup rubric — graded against the P4 standard."""
+    size: Optional[Rank] = None
+    athletic_ability: Optional[Rank] = None
+    play_history: Optional[Rank] = None
+    play_style: Optional[Rank] = None
+    character: Optional[Rank] = None
+
+
+class GradeDown(BaseModel):
+    """The overall Makeup grade, shifted down per classification level."""
+    overall: Rank
+    p4: Rank
+    group_of_5: Rank
+    fcs: Rank
+    d2_d3_naia_juco: Rank
 
 
 class EvaluationOut(BaseModel):

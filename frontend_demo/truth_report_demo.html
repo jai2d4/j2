@@ -135,6 +135,40 @@
     </div>
     <button class="run" onclick="run()">Run Metric Sieve</button>
 
+    <h2 style="margin-top:24px">Profile &amp; Makeup — Module 6</h2>
+    <div class="row2">
+      <div><label>Size</label>
+        <select id="mk_size"><option value="">— not graded —</option>
+          <option value="GAME_CHANGER">Game-Changer</option><option value="ALL_CONF">All-Conf</option>
+          <option value="WIN_PLUS">Win+</option><option value="WIN">Win</option>
+          <option value="WIN_MINUS">Win-</option><option value="NGE">NGE</option></select></div>
+      <div><label>Athletic Ability</label>
+        <select id="mk_aa"><option value="">— not graded —</option>
+          <option value="GAME_CHANGER">Game-Changer</option><option value="ALL_CONF">All-Conf</option>
+          <option value="WIN_PLUS">Win+</option><option value="WIN">Win</option>
+          <option value="WIN_MINUS">Win-</option><option value="NGE">NGE</option></select></div>
+    </div>
+    <div class="row2">
+      <div><label>Play History</label>
+        <select id="mk_history"><option value="">— not graded —</option>
+          <option value="GAME_CHANGER">Game-Changer</option><option value="ALL_CONF">All-Conf</option>
+          <option value="WIN_PLUS">Win+</option><option value="WIN">Win</option>
+          <option value="WIN_MINUS">Win-</option><option value="NGE">NGE</option></select></div>
+      <div><label>Play Style</label>
+        <select id="mk_style"><option value="">— not graded —</option>
+          <option value="GAME_CHANGER">Game-Changer</option><option value="ALL_CONF">All-Conf</option>
+          <option value="WIN_PLUS">Win+</option><option value="WIN">Win</option>
+          <option value="WIN_MINUS">Win-</option><option value="NGE">NGE</option></select></div>
+    </div>
+    <div class="row2">
+      <div><label>Character</label>
+        <select id="mk_character"><option value="">— not graded —</option>
+          <option value="GAME_CHANGER">Game-Changer</option><option value="ALL_CONF">All-Conf</option>
+          <option value="WIN_PLUS">Win+</option><option value="WIN">Win</option>
+          <option value="WIN_MINUS">Win-</option><option value="NGE">NGE</option></select></div>
+      <div></div>
+    </div>
+
     <h2 style="margin-top:24px">Film Upload — Module 1</h2>
     <div class="drop" id="drop" tabindex="0"
          ondragover="event.preventDefault();this.classList.add('over')"
@@ -163,19 +197,32 @@ const MATRIX = {
   "QB|D1_FBS":{height:[74,78],weight:[200,240],forty:[4.60,4.90],gpa_min:3.0,sat_min:1000,act_min:18},
   "QB|D2_D3_NAIA_JUCO":{height:[72,77],weight:[180,225],forty:[4.70,5.00]},
   "RB|D1_FBS":{height:[69,73],weight:[190,230],forty:[4.40,4.60],bench_min:300,squat_min:450,gpa_min:3.0,sat_min:1000,act_min:18},
-  "RB|D1_FCS_D2":{height:[68,72],weight:[180,220],forty:[4.50,4.70]},
+  "RB|D1_FCS_D2":{height:[68,72],weight:[180,220],forty:[4.50,4.90]},
   "WR|D1_FBS":{height:[72,76],weight:[180,220],forty:[4.30,4.60],gpa_min:3.0,sat_min:1000,act_min:18},
-  "WR|D1_FCS_D2":{height:[70,75],weight:[170,210],forty:[4.40,4.70]},
-  "DB|D1_FBS":{height:[70,74],weight:[175,210],forty:[4.40,4.60],shuttle_max:4.20},
+  "WR|D1_FCS_D2":{height:[70,75],weight:[170,210],forty:[4.40,4.90]},
+  "TE|D1_FBS":{height:[76,79],weight:[230,270],forty:[4.60,4.80],bench_min:300,squat_min:450,gpa_min:3.0,sat_min:1000,act_min:18},
+  "TE|D1_FCS_D2":{height:[74,78],weight:[220,260],forty:[4.70,5.20]},
+  "OL|D1_FBS":{height:[76,80],weight:[280,330],forty:[5.00,5.30],bench_min:350,squat_min:500,gpa_min:3.0,sat_min:1000,act_min:18},
+  "OL|D1_FCS_D2":{height:[74,78],weight:[270,310]},
+  "DL|D1_FBS":{height:[75,78],weight:[250,320],forty:[4.80,5.10],bench_min:350,squat_min:500,gpa_min:3.0,sat_min:1000,act_min:18},
+  "DL|D1_FCS":{height:[74,77],weight:[240,300],forty:[4.90,5.20]},
+  "DL|D2_D3_NAIA_JUCO":{height:[72,76],weight:[230,280],forty:[5.00,5.30]},
+  "DE|D1_FBS":{height:[75,78],weight:[240,280],forty:[4.60,4.80],bench_min:350,squat_min:500,gpa_min:3.0,sat_min:1000,act_min:18},
+  "DE|D1_FCS":{height:[74,77],weight:[230,270],forty:[4.70,4.90]},
+  "DE|D2_D3_NAIA_JUCO":{height:[72,76],weight:[220,260],forty:[4.80,5.10]},
+  "LB|D1_FBS":{height:[73,76],weight:[220,250],forty:[4.50,4.70],gpa_min:3.0,sat_min:1000,act_min:18},
+  "LB|D1_FCS":{height:[72,75],weight:[210,240],forty:[4.60,4.80]},
+  "LB|D2_D3_NAIA_JUCO":{height:[71,74],weight:[200,230],forty:[4.70,5.00]},
+  "DB|D1_FBS":{height:[70,74],weight:[175,210],forty:[4.40,4.60],shuttle_max:4.20,gpa_min:3.0,sat_min:1000,act_min:18},
   "DB|D1_FCS":{height:[69,73],weight:[170,200],forty:[4.50,4.70]},
-  "LB|D1_FBS":{height:[73,76],weight:[220,250],forty:[4.50,4.70]},
-  "DE|D1_FBS":{height:[75,78],weight:[240,280],forty:[4.60,4.80]},
-  "DL|D1_FBS":{height:[75,78],weight:[250,320],forty:[4.80,5.10]},
-  "OL|D1_FBS":{height:[76,80],weight:[280,330],forty:[5.00,5.30]},
-  "TE|D1_FBS":{height:[76,79],weight:[230,270],forty:[4.60,4.80]},
+  "DB|D2_D3_NAIA_JUCO":{height:[68,72],weight:[165,190],forty:[4.60,4.90]},
 };
-const LADDER = {QB:["D1_FBS","D2_D3_NAIA_JUCO"],RB:["D1_FBS","D1_FCS_D2"],WR:["D1_FBS","D1_FCS_D2"],
-  DB:["D1_FBS","D1_FCS"],LB:["D1_FBS"],DE:["D1_FBS"],DL:["D1_FBS"],OL:["D1_FBS"],TE:["D1_FBS"]};
+const LADDER = {
+  QB:["D1_FBS","D2_D3_NAIA_JUCO"], RB:["D1_FBS","D1_FCS_D2"], WR:["D1_FBS","D1_FCS_D2"],
+  TE:["D1_FBS","D1_FCS_D2"], OL:["D1_FBS","D1_FCS_D2"],
+  DL:["D1_FBS","D1_FCS","D2_D3_NAIA_JUCO"], DE:["D1_FBS","D1_FCS","D2_D3_NAIA_JUCO"],
+  LB:["D1_FBS","D1_FCS","D2_D3_NAIA_JUCO"], DB:["D1_FBS","D1_FCS","D2_D3_NAIA_JUCO"],
+};
 
 const inRange=(v,lo,hi)=>v==null?null:(lo!=null&&v<lo)?false:(hi!=null&&v>hi)?false:true;
 
@@ -183,7 +230,9 @@ const escapeHtml=(s)=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;","
 
 function runSieve(pos,a){
   let best=null, walked=[];
-  for(const tier of LADDER[pos]){
+  const ladder=LADDER[pos];
+  for(let i=0;i<ladder.length;i++){
+    const tier=ladder[i];
     const m=MATRIX[pos+"|"+tier], checks=[];
     if(m.forty) checks.push({metric:"forty_yard_dash",label:"40-yd dash",laser:true,value:a.forty,threshold:m.forty[0]+"–"+m.forty[1]+"s",passed:inRange(a.forty,null,m.forty[1])});
     if(m.shuttle_max) checks.push({metric:"pro_agility_shuttle",label:"Pro-agility",laser:true,value:a.shuttle,threshold:"≤ "+m.shuttle_max+"s",passed:inRange(a.shuttle,null,m.shuttle_max)});
@@ -197,20 +246,43 @@ function runSieve(pos,a){
     let hardFail=checks.some(c=>c.passed===false&&!["sat","act"].includes(c.metric));
     const acad=checks.filter(c=>["sat","act"].includes(c.metric));
     if(acad.length&&!acad.some(c=>c.passed)) hardFail=true;
-    const res={position:pos,tier,checks,hard_metrics_passed:!hardFail,is_game_changer:false,game_changer_reason:null};
+    const res={position:pos,tier,checks,hard_metrics_passed:!hardFail,is_game_changer:false,game_changer_reason:null,qualifying_tiers:[]};
     if(checks.every(c=>c.passed==null)){ // no data provided → cannot project
       res.hard_metrics_passed=false; res.tier="UNRANKED"; res.walked=walked; return res;
     }
-    walked.push({tier,passed:!hardFail});
-    if(!hardFail){res.walked=walked;return res;}
+    if(!hardFail){
+      res.qualifying_tiers=ladder.slice(i); // clearing this tier implies clearing every easier one below it
+      walked.push({tier,passed:true});
+      res.walked=walked;return res;
+    }
+    walked.push({tier,passed:false});
     if(!best) best=res;
   }
   const laser=best.checks.filter(c=>c.laser), frame=best.checks.filter(c=>["height_in","weight_lbs"].includes(c.metric));
   if(laser.length&&laser.every(c=>c.passed!==false)&&laser.some(c=>c.passed)&&frame.some(c=>c.passed===false)){
     best.is_game_changer=true;
     best.game_changer_reason="Laser metrics meet or beat D1 FBS thresholds despite out-of-bracket frame. Flag for Truth Report Panel manual review.";
+    best.qualifying_tiers=[best.tier];
   } else { best.tier="UNRANKED"; }
   best.walked=walked; return best;
+}
+
+// ===== Module 6: Profile & Makeup grade-down (mirrors app/services/makeup_grade.py) =====
+const RANK_ORDER=["GAME_CHANGER","ALL_CONF","WIN_PLUS","WIN","WIN_MINUS","NGE"];
+const RANK_LABEL={GAME_CHANGER:"Game-Changer",ALL_CONF:"All-Conf",WIN_PLUS:"Win+",WIN:"Win",WIN_MINUS:"Win-",NGE:"NGE"};
+
+function averageMakeupGrade(grades){
+  const provided=Object.values(grades).filter(g=>g);
+  if(!provided.length) return null;
+  const indices=provided.map(g=>RANK_ORDER.indexOf(g));
+  const avgIndex=Math.round(indices.reduce((a,b)=>a+b,0)/indices.length);
+  return RANK_ORDER[avgIndex];
+}
+function shiftRank(rank,steps){
+  return RANK_ORDER[Math.max(0,RANK_ORDER.indexOf(rank)-steps)];
+}
+function gradeDown(overall){
+  return {overall, p4:shiftRank(overall,0), group_of_5:shiftRank(overall,1), fcs:shiftRank(overall,2), d2_d3_naia_juco:shiftRank(overall,3)};
 }
 
 // ===== Simulated Gemini film block (live build calls gemini-3.5-flash) =====
@@ -283,11 +355,33 @@ function run(){
   const r=runSieve(pos,a);
   const tierLabel=r.tier.replaceAll("_"," ");
   const ladder=r.walked.map(w=>`<span class="rung ${w.passed?"lit":"failed"}">${w.tier.replaceAll("_"," ")}</span>`).join("");
+  const qualList=r.qualifying_tiers.map(t=>`<span class="pill pass">${t.replaceAll("_"," ")}</span>`).join(" ");
   const rows=r.checks.map(c=>{
     const pill=c.passed===true?'<span class="pill pass">PASS</span>':c.passed===false?'<span class="pill fail">FAIL</span>':'<span class="pill na">NO DATA</span>';
     return `<tr><td>${c.label}${c.laser?' <span style="color:var(--laser);font-size:10px;font-family:IBM Plex Mono">LASER</span>':''}</td>
       <td class="val ${c.laser?"laser":""}">${c.value??"—"}</td><td style="color:var(--dim);font-family:IBM Plex Mono;font-size:12px">${c.threshold}</td><td>${pill}</td></tr>`;
   }).join("");
+
+  const mkGrades={size:document.getElementById("mk_size").value||null,
+    athletic_ability:document.getElementById("mk_aa").value||null,
+    play_history:document.getElementById("mk_history").value||null,
+    play_style:document.getElementById("mk_style").value||null,
+    character:document.getElementById("mk_character").value||null};
+  const mkOverall=averageMakeupGrade(mkGrades);
+  const mkDown=mkOverall?gradeDown(mkOverall):null;
+  const makeupHTML=mkDown?`
+    <div class="banner" style="margin-top:18px">
+      <div>
+        <div class="tier-sub" style="margin:0 0 6px">PROFILE &amp; MAKEUP — GRADED AGAINST P4 STANDARD</div>
+        <div class="ladder" style="margin:0">
+          <span class="rung lit">P4: ${RANK_LABEL[mkDown.p4]}</span>
+          <span class="rung lit">Group of 5: ${RANK_LABEL[mkDown.group_of_5]}</span>
+          <span class="rung lit">FCS: ${RANK_LABEL[mkDown.fcs]}</span>
+          <span class="rung lit">D2/D3/NAIA/JUCO: ${RANK_LABEL[mkDown.d2_d3_naia_juco]}</span>
+        </div>
+      </div>
+    </div>`:"";
+
   document.getElementById("report").innerHTML=`
     <h2>Truth Report</h2>
     <div class="report-in">
@@ -299,11 +393,13 @@ function run(){
       ${r.is_game_changer?'<div class="stamp">Game Changer</div>':""}
     </div>
     <div class="ladder">${ladder}</div>
+    ${qualList?`<div class="tier-sub" style="margin-bottom:8px">QUALIFIES FOR: ${qualList}</div>`:""}
     <table>
       <tr><th>Metric</th><th>Athlete</th><th>Threshold</th><th>Sieve</th></tr>
       ${rows}
     </table>
     ${r.is_game_changer?`<div class="gc"><b>⚑ Out-of-bracket flag</b><p>${r.game_changer_reason}</p></div>`:""}
+    ${makeupHTML}
     <div class="film">
       <h2 style="margin-bottom:8px">Film Analysis — gemini-3.5-flash
         <span class="tag">${filmState.mode==="live"?"LIVE API RESULT":filmState.mode==="simulated"?"SIMULATED — BACKEND OFFLINE":"AWAITING FILM UPLOAD"}</span></h2>

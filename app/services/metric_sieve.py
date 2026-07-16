@@ -12,25 +12,50 @@ from typing import Optional
 
 from app.models.schemas import MetricCheck, Position, SieveResult, Tier
 
-# (min, max) tuples; None = no constraint at that bound
+# (min, max) tuples; None = no constraint at that bound.
+# Sourced from the recruiting-guide thresholds; DL's D1 FCS weight range and
+# D2/D3/NAIA/JUCO tier were cut off in the source and are interpolated from
+# DE's tier-to-tier step (height -1in, weight -10lbs, forty +0.1-0.2s per level).
 POSITION_MATRIX: dict[tuple[str, str], dict] = {
     ("QB", "D1_FBS"): dict(height=(74.0, 78.0), weight=(200, 240), forty=(4.60, 4.90),
                            gpa_min=3.00, sat_min=1000, act_min=18),
     ("QB", "D2_D3_NAIA_JUCO"): dict(height=(72.0, 77.0), weight=(180, 225), forty=(4.70, 5.00)),
+
     ("RB", "D1_FBS"): dict(height=(69.0, 73.0), weight=(190, 230), forty=(4.40, 4.60),
                            bench_min=300, squat_min=450, gpa_min=3.00, sat_min=1000, act_min=18),
-    ("RB", "D1_FCS_D2"): dict(height=(68.0, 72.0), weight=(180, 220), forty=(4.50, 4.70)),
+    ("RB", "D1_FCS_D2"): dict(height=(68.0, 72.0), weight=(180, 220), forty=(4.50, 4.90)),
+
     ("WR", "D1_FBS"): dict(height=(72.0, 76.0), weight=(180, 220), forty=(4.30, 4.60),
                            gpa_min=3.00, sat_min=1000, act_min=18),
-    ("WR", "D1_FCS_D2"): dict(height=(70.0, 75.0), weight=(170, 210), forty=(4.40, 4.70)),
+    ("WR", "D1_FCS_D2"): dict(height=(70.0, 75.0), weight=(170, 210), forty=(4.40, 4.90)),
+
+    ("TE", "D1_FBS"): dict(height=(76.0, 79.0), weight=(230, 270), forty=(4.60, 4.80),
+                           bench_min=300, squat_min=450, gpa_min=3.00, sat_min=1000, act_min=18),
+    ("TE", "D1_FCS_D2"): dict(height=(74.0, 78.0), weight=(220, 260), forty=(4.70, 5.20)),
+
+    ("OL", "D1_FBS"): dict(height=(76.0, 80.0), weight=(280, 330), forty=(5.00, 5.30),
+                           bench_min=350, squat_min=500, gpa_min=3.00, sat_min=1000, act_min=18),
+    ("OL", "D1_FCS_D2"): dict(height=(74.0, 78.0), weight=(270, 310)),
+
+    ("DL", "D1_FBS"): dict(height=(75.0, 78.0), weight=(250, 320), forty=(4.80, 5.10),
+                           bench_min=350, squat_min=500, gpa_min=3.00, sat_min=1000, act_min=18),
+    ("DL", "D1_FCS"): dict(height=(74.0, 77.0), weight=(240, 300), forty=(4.90, 5.20)),
+    ("DL", "D2_D3_NAIA_JUCO"): dict(height=(72.0, 76.0), weight=(230, 280), forty=(5.00, 5.30)),
+
+    ("DE", "D1_FBS"): dict(height=(75.0, 78.0), weight=(240, 280), forty=(4.60, 4.80),
+                           bench_min=350, squat_min=500, gpa_min=3.00, sat_min=1000, act_min=18),
+    ("DE", "D1_FCS"): dict(height=(74.0, 77.0), weight=(230, 270), forty=(4.70, 4.90)),
+    ("DE", "D2_D3_NAIA_JUCO"): dict(height=(72.0, 76.0), weight=(220, 260), forty=(4.80, 5.10)),
+
+    ("LB", "D1_FBS"): dict(height=(73.0, 76.0), weight=(220, 250), forty=(4.50, 4.70),
+                           gpa_min=3.00, sat_min=1000, act_min=18),
+    ("LB", "D1_FCS"): dict(height=(72.0, 75.0), weight=(210, 240), forty=(4.60, 4.80)),
+    ("LB", "D2_D3_NAIA_JUCO"): dict(height=(71.0, 74.0), weight=(200, 230), forty=(4.70, 5.00)),
+
     ("DB", "D1_FBS"): dict(height=(70.0, 74.0), weight=(175, 210), forty=(4.40, 4.60),
-                           shuttle_max=4.20),
+                           shuttle_max=4.20, gpa_min=3.00, sat_min=1000, act_min=18),
     ("DB", "D1_FCS"): dict(height=(69.0, 73.0), weight=(170, 200), forty=(4.50, 4.70)),
-    ("LB", "D1_FBS"): dict(height=(73.0, 76.0), weight=(220, 250), forty=(4.50, 4.70)),
-    ("DE", "D1_FBS"): dict(height=(75.0, 78.0), weight=(240, 280), forty=(4.60, 4.80)),
-    ("DL", "D1_FBS"): dict(height=(75.0, 78.0), weight=(250, 320), forty=(4.80, 5.10)),
-    ("OL", "D1_FBS"): dict(height=(76.0, 80.0), weight=(280, 330), forty=(5.00, 5.30)),
-    ("TE", "D1_FBS"): dict(height=(76.0, 79.0), weight=(230, 270), forty=(4.60, 4.80)),
+    ("DB", "D2_D3_NAIA_JUCO"): dict(height=(68.0, 72.0), weight=(165, 190), forty=(4.60, 4.90)),
 }
 
 # Tier evaluation order per position (best bracket first)
@@ -38,12 +63,12 @@ TIER_LADDER: dict[str, list[str]] = {
     "QB": ["D1_FBS", "D2_D3_NAIA_JUCO"],
     "RB": ["D1_FBS", "D1_FCS_D2"],
     "WR": ["D1_FBS", "D1_FCS_D2"],
-    "DB": ["D1_FBS", "D1_FCS"],
-    "LB": ["D1_FBS"],
-    "DE": ["D1_FBS"],
-    "DL": ["D1_FBS"],
-    "OL": ["D1_FBS"],
-    "TE": ["D1_FBS"],
+    "TE": ["D1_FBS", "D1_FCS_D2"],
+    "OL": ["D1_FBS", "D1_FCS_D2"],
+    "DL": ["D1_FBS", "D1_FCS", "D2_D3_NAIA_JUCO"],
+    "DE": ["D1_FBS", "D1_FCS", "D2_D3_NAIA_JUCO"],
+    "LB": ["D1_FBS", "D1_FCS", "D2_D3_NAIA_JUCO"],
+    "DB": ["D1_FBS", "D1_FCS", "D2_D3_NAIA_JUCO"],
 }
 
 
@@ -71,10 +96,13 @@ def run_sieve(
     act: Optional[int] = None,
 ) -> SieveResult:
     """Walk the tier ladder top-down; project the highest tier where all
-    provided hard metrics pass. Laser metrics evaluated first."""
+    provided hard metrics pass. Laser metrics evaluated first. Clearing a
+    tier implies clearing every easier tier below it, so qualifying_tiers
+    is the full slice from the best passing tier down to the bottom."""
     best: Optional[SieveResult] = None
+    ladder = TIER_LADDER[position.value]
 
-    for tier_name in TIER_LADDER[position.value]:
+    for ladder_index, tier_name in enumerate(ladder):
         matrix = POSITION_MATRIX[(position.value, tier_name)]
         checks: list[MetricCheck] = []
 
@@ -149,7 +177,8 @@ def run_sieve(
             return result
 
         if not hard_fail:
-            return result  # highest passing tier — done
+            result.qualifying_tiers = [Tier(t) for t in ladder[ladder_index:]]
+            return result  # highest passing tier — done; rest of ladder is implied
         if best is None:
             best = result  # keep top-tier detail for game-changer analysis
 
@@ -166,6 +195,7 @@ def run_sieve(
             "Laser metrics meet or beat D1 FBS thresholds despite out-of-bracket frame. "
             "Flag for Truth Report Panel manual review."
         )
+        best.qualifying_tiers = [best.tier]
 
     best.tier = Tier.UNRANKED if not best.is_game_changer else best.tier
     return best
