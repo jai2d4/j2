@@ -9,8 +9,10 @@ Module 5  → db/init_schema.sql           (relational threshold matrix)
 import json
 import os
 from pathlib import Path
+from uuid import UUID
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+import asyncpg
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
@@ -18,13 +20,23 @@ from google.genai import types
 from typing import Optional
 
 from app.core.config import get_settings
-from app.models.schemas import AthleteCreate, GradeDown, MakeupGrades, Position, SieveResult
+from app.core.db import get_pool, lifespan
+from app.models.schemas import (
+    Athlete,
+    AthleteCreate,
+    EvaluationOut,
+    GradeDown,
+    MakeupGrades,
+    Position,
+    SieveResult,
+)
+from app.services import repository
 from app.services.film_grading import build_scouting_prompt
 from app.services.makeup_grade import average_makeup_grade, grade_down
 from app.services.metric_sieve import run_sieve
 
 settings = get_settings()
-app = FastAPI(title="TRU_Scouting_Engine_Backend", version="1.0.0")
+app = FastAPI(title="TRU_Scouting_Engine_Backend", version="1.0.0", lifespan=lifespan)
 
 # Allow the local demo panel (file:// or localhost) to call the API
 app.add_middleware(
@@ -34,8 +46,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Native Google GenAI client — reads GEMINI_API_KEY from environment
-ai_client = genai.Client()
+# Native Google GenAI client
+ai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 Path(settings.UPLOAD_TMP_DIR).mkdir(parents=True, exist_ok=True)
 
@@ -113,6 +125,7 @@ async def analyze_player_film(
             "analysis": analysis,
             "film_grades": analysis.get("film_grades", {}) if isinstance(analysis, dict) else {},
             "flags": analysis.get("flags", []) if isinstance(analysis, dict) else [],
+            "gemini_file_id": video_file.name,
         }
 
     except HTTPException:
@@ -130,29 +143,60 @@ async def truth_report(
     position: Position = Form(Position.DB),
     athlete_json: str = Form(..., description="AthleteCreate payload as JSON string"),
     makeup_json: Optional[str] = Form(None, description="MakeupGrades payload as JSON string"),
+    pool: asyncpg.Pool = Depends(get_pool),
 ):
     """Module 4: Truth Report Panel — combines the metric sieve (hard laser
     thresholds), the Profile & Makeup grade-down, and Gemini film analysis
-    into one user-facing evaluation."""
+    into one user-facing evaluation, and persists the athlete, film upload,
+    and evaluation so the Truth Report can be looked up again later."""
     try:
         athlete = AthleteCreate(**json.loads(athlete_json))
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Bad athlete payload: {e}")
 
+    makeup_grades_input: Optional[MakeupGrades] = None
     makeup: Optional[GradeDown] = None
     if makeup_json:
         try:
-            overall = average_makeup_grade(MakeupGrades(**json.loads(makeup_json)))
+            makeup_grades_input = MakeupGrades(**json.loads(makeup_json))
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Bad makeup payload: {e}")
+        overall = average_makeup_grade(makeup_grades_input)
         if overall is not None:
             makeup = grade_down(overall)
 
     sieve = await metric_sieve(athlete)
     film = await analyze_player_film(file=file, position=position)
 
+    athlete_record = await repository.create_athlete(pool, athlete)
+    film_record = await repository.create_film_upload(
+        pool,
+        athlete_id=athlete_record["id"],
+        filename=file.filename,
+        gemini_file_id=film.get("gemini_file_id"),
+        mime_type=file.content_type,
+        status="analyzed" if film.get("success") else "failed",
+    )
+    evaluation_record = await repository.create_evaluation(
+        pool,
+        athlete_id=athlete_record["id"],
+        film_id=film_record["id"],
+        position_evaluated=position,
+        projected_tier=sieve.tier.value,
+        physical_projection=film["analysis"] if isinstance(film["analysis"], dict) else None,
+        metric_sieve_results=sieve.model_dump(),
+        qualifying_tiers=[t.value for t in sieve.qualifying_tiers],
+        is_game_changer=sieve.is_game_changer,
+        game_changer_reason=sieve.game_changer_reason,
+        makeup_grades=makeup_grades_input.model_dump() if makeup_grades_input else None,
+        makeup_grade_down=makeup.model_dump() if makeup else None,
+        model_used=settings.GEMINI_MODEL,
+    )
+
     return {
         "success": True,
+        "athlete_id": str(athlete_record["id"]),
+        "evaluation_id": str(evaluation_record["id"]),
         "athlete": f"{athlete.first_name} {athlete.last_name}",
         "position": position.value,
         "projected_tier": sieve.tier.value,
@@ -166,3 +210,33 @@ async def truth_report(
         "film_grades": film["film_grades"],
         "film_flags": film["flags"],
     }
+
+
+@app.get("/api/v1/athletes", response_model=list[Athlete])
+async def list_athletes(pool: asyncpg.Pool = Depends(get_pool)):
+    """Every athlete profile created so far, most recent first."""
+    rows = await repository.list_athletes(pool)
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/v1/athletes/{athlete_id}", response_model=Athlete)
+async def get_athlete(athlete_id: UUID, pool: asyncpg.Pool = Depends(get_pool)):
+    row = await repository.get_athlete(pool, athlete_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Athlete not found.")
+    return dict(row)
+
+
+@app.get("/api/v1/athletes/{athlete_id}/evaluations", response_model=list[EvaluationOut])
+async def list_athlete_evaluations(athlete_id: UUID, pool: asyncpg.Pool = Depends(get_pool)):
+    """Full evaluation history for one athlete — every Truth Report run against them."""
+    rows = await repository.list_evaluations_for_athlete(pool, athlete_id)
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/v1/evaluations/{evaluation_id}", response_model=EvaluationOut)
+async def get_evaluation(evaluation_id: UUID, pool: asyncpg.Pool = Depends(get_pool)):
+    row = await repository.get_evaluation(pool, evaluation_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Evaluation not found.")
+    return dict(row)
