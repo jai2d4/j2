@@ -11,13 +11,15 @@ tru-scouting-engine/
 │   └── init_schema.sql       # Module 5 — PostgreSQL schema + seeded position matrix
 ├── scripts/                  # (migrations / batch jobs)
 └── app/
-    ├── main.py               # Modules 1 & 4 — Gemini ingestion + Truth Report routes
+    ├── main.py               # Modules 1, 4 & 6 — Gemini ingestion + Truth Report + Makeup Grade routes
     ├── core/
     │   └── config.py         # typed .env loader
     ├── models/
     │   └── schemas.py        # Pydantic validation models
     ├── services/
-    │   └── metric_sieve.py   # Modules 2 & 3 — positional matrices as code
+    │   ├── metric_sieve.py   # Modules 2 & 3 — positional matrices as code
+    │   ├── film_grading.py   # Module 1 — Gemini scouting prompt builder
+    │   └── makeup_grade.py   # Module 6 — Profile & Makeup grade-down logic
     └── routers/              # (split routes here as the API grows)
 ```
 
@@ -32,5 +34,6 @@ uvicorn app.main:app --reload
 ## Endpoints
 - `GET  /api/v1/health`
 - `POST /api/v1/scout/metric-sieve`   — thresholds only, no film
+- `POST /api/v1/scout/makeup-grade`   — Profile & Makeup rubric, grade-down across classifications
 - `POST /api/v1/scout/analyze-film`   — Gemini native video upload
 - `POST /api/v1/scout/truth-report`   — sieve + film combined
