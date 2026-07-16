@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/trugrade-logo.jpg" alt="TruGrade" width="360"></p>
+
 # TRU Scouting Engine
 
 ## Structure
