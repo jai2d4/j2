@@ -6,6 +6,7 @@ Modules 2/3 → app.services.metric_sieve   (hard-coded positional matrices)
 Module 4  → /api/v1/scout/truth-report   (combined film + sieve output)
 Module 5  → db/init_schema.sql           (relational threshold matrix)
 """
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -52,6 +53,11 @@ ai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 Path(settings.UPLOAD_TMP_DIR).mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTS = (".mp4", ".mov", ".avi")
+
+# Gemini processes uploaded video server-side before it's usable in a prompt —
+# poll until it leaves PROCESSING instead of using it immediately.
+FILE_POLL_INTERVAL_S = 2
+FILE_POLL_MAX_ATTEMPTS = 30
 
 
 @app.get("/api/v1/health")
@@ -107,6 +113,17 @@ async def analyze_player_film(
             buffer.write(data)
 
         video_file = ai_client.files.upload(file=video_path)
+        for _ in range(FILE_POLL_MAX_ATTEMPTS):
+            if video_file.state.name != "PROCESSING":
+                break
+            await asyncio.sleep(FILE_POLL_INTERVAL_S)
+            video_file = ai_client.files.get(name=video_file.name)
+        if video_file.state.name == "FAILED":
+            raise HTTPException(status_code=502, detail="Gemini failed to process the uploaded video.")
+        if video_file.state.name != "ACTIVE":
+            raise HTTPException(
+                status_code=504, detail="Timed out waiting for Gemini to process the uploaded video."
+            )
 
         response = ai_client.models.generate_content(
             model=settings.GEMINI_MODEL,
