@@ -22,12 +22,17 @@ async def _init_connection(conn: asyncpg.Connection) -> None:
     )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def create_pool() -> asyncpg.Pool:
+    """Standalone pool creation for scripts that run outside the FastAPI app."""
     settings = get_settings()
-    app.state.db_pool = await asyncpg.create_pool(
+    return await asyncpg.create_pool(
         dsn=settings.database_url, min_size=1, max_size=10, init=_init_connection,
     )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    app.state.db_pool = await create_pool()
     try:
         yield
     finally:

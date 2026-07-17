@@ -30,11 +30,18 @@ from app.models.schemas import (
     MakeupGrades,
     Position,
     SieveResult,
+    WebUpdate,
 )
 from app.services import repository
 from app.services.film_grading import build_scouting_prompt
+from app.services.improvement_plan import generate_improvement_plan
 from app.services.makeup_grade import average_makeup_grade, grade_down
 from app.services.metric_sieve import run_sieve
+from app.services.web_search import find_athlete_updates, parse_published_date
+
+# Sieve check names -> the AthleteCreate/web-search metric key they represent,
+# so evaluation history and web-discovered numbers land on the same series.
+_METRIC_KEY_MAP = {"forty_yard_dash": "forty_s", "pro_agility_shuttle": "shuttle_s"}
 
 settings = get_settings()
 app = FastAPI(title="TRU_Scouting_Engine_Backend", version="1.0.0", lifespan=lifespan)
@@ -184,6 +191,14 @@ async def truth_report(
 
     sieve = await metric_sieve(athlete)
     film = await analyze_player_film(file=file, position=position)
+    try:
+        improvement_plan = generate_improvement_plan(
+            ai_client, settings.GEMINI_MODEL, position, sieve, film["film_grades"], film["flags"]
+        )
+    except Exception as e:
+        # Non-critical — the sieve/film results and persistence below are still valuable
+        # even if this one extra Gemini call fails (e.g. rate limit).
+        improvement_plan = {"raw": f"Improvement plan unavailable: {e}"}
 
     athlete_record = await repository.create_athlete(pool, athlete)
     film_record = await repository.create_film_upload(
@@ -207,6 +222,7 @@ async def truth_report(
         game_changer_reason=sieve.game_changer_reason,
         makeup_grades=makeup_grades_input.model_dump() if makeup_grades_input else None,
         makeup_grade_down=makeup.model_dump() if makeup else None,
+        improvement_plan=improvement_plan,
         model_used=settings.GEMINI_MODEL,
     )
 
@@ -226,6 +242,7 @@ async def truth_report(
         "film_analysis": film["analysis"],
         "film_grades": film["film_grades"],
         "film_flags": film["flags"],
+        "improvement_plan": improvement_plan,
     }
 
 
@@ -265,3 +282,75 @@ async def get_evaluation(evaluation_id: UUID, pool: asyncpg.Pool = Depends(get_p
     if row is None:
         raise HTTPException(status_code=404, detail="Evaluation not found.")
     return dict(row)
+
+
+@app.post("/api/v1/athletes/{athlete_id}/search-updates", response_model=list[WebUpdate])
+async def search_athlete_updates(athlete_id: UUID, pool: asyncpg.Pool = Depends(get_pool)):
+    """Module 8: searches the web via Gemini for news/updated metrics on this
+    athlete and saves whatever it finds for the progression chart."""
+    athlete = await repository.get_athlete(pool, athlete_id)
+    if athlete is None:
+        raise HTTPException(status_code=404, detail="Athlete not found.")
+
+    try:
+        result = find_athlete_updates(
+            ai_client, settings.GEMINI_MODEL,
+            first_name=athlete["first_name"], last_name=athlete["last_name"],
+            position=athlete["position"], school=athlete["school"], grad_year=athlete["grad_year"],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Web search failed: {e}")
+
+    saved = []
+    for update in result["updates"]:
+        if not isinstance(update, dict):
+            continue
+        record = await repository.create_web_update(
+            pool,
+            athlete_id=athlete_id,
+            source_title=update.get("title"),
+            source_url=update.get("url"),
+            published_at=parse_published_date(update.get("published_date")),
+            summary=update.get("summary") or "No summary provided.",
+            discovered_metrics=update.get("metrics") if isinstance(update.get("metrics"), dict) else None,
+        )
+        saved.append(dict(record))
+    return saved
+
+
+@app.get("/api/v1/athletes/{athlete_id}/updates", response_model=list[WebUpdate])
+async def list_athlete_updates(athlete_id: UUID, pool: asyncpg.Pool = Depends(get_pool)):
+    """Every web-discovered update saved for this athlete, most recent first."""
+    rows = await repository.list_web_updates_for_athlete(pool, athlete_id)
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/v1/athletes/{athlete_id}/progression")
+async def get_athlete_progression(athlete_id: UUID, pool: asyncpg.Pool = Depends(get_pool)):
+    """Per-metric time series combining every Truth Report's combine numbers
+    with any web-discovered metric updates, for the progression chart."""
+    evaluations = [dict(r) for r in await repository.list_evaluations_for_athlete(pool, athlete_id)]
+    updates = [dict(r) for r in await repository.list_web_updates_for_athlete(pool, athlete_id)]
+
+    series: dict[str, list[dict]] = {}
+    for ev in evaluations:
+        for check in (ev.get("metric_sieve_results") or {}).get("checks", []):
+            value = check.get("athlete_value")
+            if value is None:
+                continue
+            key = _METRIC_KEY_MAP.get(check["metric"], check["metric"])
+            series.setdefault(key, []).append({
+                "date": ev["created_at"].isoformat(), "value": value,
+                "source": "evaluation", "label": "Truth Report",
+            })
+    for upd in updates:
+        for key, value in (upd.get("discovered_metrics") or {}).items():
+            if value is None:
+                continue
+            series.setdefault(key, []).append({
+                "date": upd["created_at"].isoformat(), "value": value,
+                "source": "web", "label": upd.get("source_title") or "Web update",
+            })
+    for points in series.values():
+        points.sort(key=lambda p: p["date"])
+    return series

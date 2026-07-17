@@ -83,6 +83,7 @@ async def create_evaluation(
     game_changer_reason: Optional[str],
     makeup_grades: Optional[dict],
     makeup_grade_down: Optional[dict],
+    improvement_plan: Optional[dict],
     model_used: str,
 ) -> asyncpg.Record:
     return await pool.fetchrow(
@@ -91,14 +92,14 @@ async def create_evaluation(
             (athlete_id, film_id, position_evaluated, projected_tier,
              physical_projection, metric_sieve_results, qualifying_tiers,
              is_game_changer, game_changer_reason, makeup_grades,
-             makeup_grade_down, model_used)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             makeup_grade_down, improvement_plan, model_used)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING *
         """,
         athlete_id, film_id, position_evaluated.value, projected_tier,
         physical_projection, metric_sieve_results, qualifying_tiers,
         is_game_changer, game_changer_reason, makeup_grades,
-        makeup_grade_down, model_used,
+        makeup_grade_down, improvement_plan, model_used,
     )
 
 
@@ -111,5 +112,35 @@ async def list_evaluations_for_athlete(
 ) -> list[asyncpg.Record]:
     return await pool.fetch(
         "SELECT * FROM evaluations WHERE athlete_id = $1 ORDER BY created_at DESC",
+        athlete_id,
+    )
+
+
+async def create_web_update(
+    pool: asyncpg.Pool,
+    *,
+    athlete_id: UUID,
+    source_title: Optional[str],
+    source_url: Optional[str],
+    published_at,
+    summary: str,
+    discovered_metrics: Optional[dict],
+) -> asyncpg.Record:
+    return await pool.fetchrow(
+        """
+        INSERT INTO athlete_web_updates
+            (athlete_id, source_title, source_url, published_at, summary, discovered_metrics)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *
+        """,
+        athlete_id, source_title, source_url, published_at, summary, discovered_metrics,
+    )
+
+
+async def list_web_updates_for_athlete(
+    pool: asyncpg.Pool, athlete_id: UUID
+) -> list[asyncpg.Record]:
+    return await pool.fetch(
+        "SELECT * FROM athlete_web_updates WHERE athlete_id = $1 ORDER BY created_at DESC",
         athlete_id,
     )
