@@ -108,6 +108,10 @@
       <button class="chip" onclick="loadPreset('burner')">Undersized burner</button>
       <button class="chip" onclick="loadPreset('rb')">Bubble RB</button>
     </div>
+    <div class="row2">
+      <div><label>First Name</label><input id="first_name" type="text" placeholder="Jordan"></div>
+      <div><label>Last Name</label><input id="last_name" type="text" placeholder="Rivers"></div>
+    </div>
     <label>Position</label>
     <select id="position">
       <option>QB</option><option>RB</option><option>WR</option><option selected>DB</option>
@@ -183,11 +187,22 @@
     <input id="filepick" type="file" accept=".mp4,.mov,.avi,video/*" style="display:none"
            onchange="handleFile(this.files[0])">
     <div id="filmstatus"></div>
+
+    <button class="run" style="margin-top:14px;background:linear-gradient(180deg,var(--pass),#2f9d5c 90%);color:#08150E"
+            onclick="saveTruthReport()">Save Truth Report</button>
+    <div id="savestatus"></div>
   </div>
 
   <div class="card" id="report">
     <h2>Truth Report</h2>
     <div class="empty">Load a preset or enter combine numbers, then run the sieve.</div>
+  </div>
+</div>
+
+<div class="wrap" style="grid-template-columns:1fr">
+  <div class="card">
+    <h2>Saved Athletes</h2>
+    <div id="savedathletes"><div class="empty">Loading…</div></div>
   </div>
 </div>
 
@@ -326,8 +341,10 @@ function simulatedFilmGrades(pos){
 // ===== Film upload pipeline (Module 1) =====
 // Tries the real backend at localhost:8000 first; falls back to simulated
 // output so the demo works standalone.
-let filmState = {name:null, mode:null, analysis:null};
-const API = "http://localhost:8000/api/v1/scout/analyze-film";
+let filmState = {name:null, mode:null, analysis:null, file:null};
+let lastImprovementPlan = null;
+const API_BASE = "http://localhost:8000/api/v1";
+const API = API_BASE + "/scout/analyze-film";
 
 function pipelineHTML(steps){
   return '<div class="pipeline">'+steps.map(s=>
@@ -340,7 +357,7 @@ async function handleFile(file){
   const ok=/\.(mp4|mov|avi)$/i.test(file.name);
   const box=document.getElementById("filmstatus");
   if(!ok){box.innerHTML='<div class="pipeline"><div class="step err">✕ Invalid video format (.mp4 / .mov / .avi)</div></div>';return;}
-  filmState={name:file.name, mode:null, analysis:null};
+  filmState={name:file.name, mode:null, analysis:null, file:file};
   const safeName=escapeHtml(file.name);
   box.innerHTML=`<div class="filmname">${safeName} · ${(file.size/1048576).toFixed(1)} MB</div>`+
     pipelineHTML([{label:"upload received",state:"done"},{label:"sending to gemini-3.5-flash…",state:"active"},{label:"awaiting analysis",state:""}]);
@@ -363,6 +380,188 @@ async function handleFile(file){
     filmState.mode="simulated"; filmState.analysis=simulatedFilmGrades(document.getElementById("position").value);
   }
   run();
+}
+
+// ===== Persistence — saves the athlete/film/evaluation to the backend =====
+function setSaveStatus(html){ document.getElementById("savestatus").innerHTML=html; }
+
+async function saveTruthReport(){
+  const first=document.getElementById("first_name").value.trim();
+  const last=document.getElementById("last_name").value.trim();
+  if(!first||!last){ setSaveStatus('<div class="pipeline"><div class="step err">✕ Enter first and last name to save.</div></div>'); return; }
+  if(!filmState.file){ setSaveStatus('<div class="pipeline"><div class="step err">✕ Upload game film before saving — Truth Report requires film.</div></div>'); return; }
+
+  const athlete={first_name:first,last_name:last,position:document.getElementById("position").value,
+    height_in:num("height"),weight_lbs:num("weight"),forty_s:num("forty"),shuttle_s:num("shuttle"),
+    bench_lbs:num("bench"),squat_lbs:num("squat"),gpa:num("gpa"),sat:num("sat"),act:num("act")};
+  const makeup={size:document.getElementById("mk_size").value||null,
+    athletic_ability:document.getElementById("mk_aa").value||null,
+    play_history:document.getElementById("mk_history").value||null,
+    play_style:document.getElementById("mk_style").value||null,
+    character:document.getElementById("mk_character").value||null};
+  const hasMakeup=Object.values(makeup).some(v=>v!==null);
+
+  setSaveStatus(pipelineHTML([{label:"saving athlete, film, and evaluation…",state:"active"}]));
+  try{
+    const fd=new FormData();
+    fd.append("file",filmState.file);
+    fd.append("position",document.getElementById("position").value);
+    fd.append("athlete_json",JSON.stringify(athlete));
+    if(hasMakeup) fd.append("makeup_json",JSON.stringify(makeup));
+    const ctl=new AbortController(); setTimeout(()=>ctl.abort(),150000);
+    const res=await fetch(API_BASE+"/scout/truth-report",{method:"POST",body:fd,signal:ctl.signal});
+    if(!res.ok){ const err=await res.json().catch(()=>({detail:"HTTP "+res.status})); throw new Error(err.detail||"HTTP "+res.status); }
+    const data=await res.json();
+    setSaveStatus(pipelineHTML([{label:`saved — athlete ${data.athlete_id.slice(0,8)}, evaluation ${data.evaluation_id.slice(0,8)}`,state:"done"}]));
+    lastImprovementPlan=data.improvement_plan||null;
+    run();
+    loadSavedAthletes();
+  }catch(e){
+    setSaveStatus(`<div class="pipeline"><div class="step err">✕ ${escapeHtml(e.message||String(e))}</div></div>`);
+  }
+}
+
+// ===== Saved Athletes panel =====
+async function loadSavedAthletes(){
+  const box=document.getElementById("savedathletes");
+  try{
+    const res=await fetch(API_BASE+"/athletes");
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const athletes=await res.json();
+    if(!athletes.length){ box.innerHTML='<div class="empty">No athletes saved yet — save a Truth Report to see it here.</div>'; return; }
+    box.innerHTML=`<table><tr><th>Name</th><th>Position</th><th>Combine</th><th>Saved</th><th></th></tr>${
+      athletes.map(a=>`<tr id="athlete-row-${a.id}">
+        <td>${escapeHtml(a.first_name)} ${escapeHtml(a.last_name)}</td>
+        <td>${escapeHtml(a.position)}</td>
+        <td style="font-family:'IBM Plex Mono';font-size:12px;color:var(--dim)">${a.height_in??"—"} in · ${a.weight_lbs??"—"} lbs · ${a.forty_s??"—"}s</td>
+        <td style="font-family:'IBM Plex Mono';font-size:12px;color:var(--dim)">${new Date(a.created_at).toLocaleString()}</td>
+        <td><button class="chip" onclick="toggleAthleteDetails('${a.id}')">Progression</button>
+            <button class="chip" onclick="deleteAthlete('${a.id}')">Delete</button></td>
+      </tr>`).join("")
+    }</table>`;
+  }catch(e){
+    box.innerHTML=`<div class="empty">Backend offline — start uvicorn on :8000 to see saved athletes.</div>`;
+  }
+}
+
+async function deleteAthlete(id){
+  if(!confirm("Delete this athlete and all their evaluations? This can't be undone.")) return;
+  try{
+    const res=await fetch(API_BASE+"/athletes/"+id,{method:"DELETE"});
+    if(!res.ok && res.status!==404) throw new Error("HTTP "+res.status);
+    loadSavedAthletes();
+  }catch(e){
+    alert("Failed to delete: "+(e.message||e));
+  }
+}
+
+// ===== Progression chart + web-discovered updates (Module 8) =====
+const METRIC_LABELS = {forty_s:"40-Yard Dash (s)", shuttle_s:"Pro-Agility Shuttle (s)",
+  height_in:"Height (in)", weight_lbs:"Weight (lbs)", bench_lbs:"Bench (lbs)",
+  squat_lbs:"Squat (lbs)", gpa:"GPA", sat:"SAT", act:"ACT"};
+
+function svgLineChart(points, metricKey){
+  const W=420,H=150,padL=40,padR=14,padT=14,padB=26;
+  const times=points.map(p=>new Date(p.date).getTime());
+  const values=points.map(p=>p.value);
+  const minT=Math.min(...times), maxT=Math.max(...times), tSpan=(maxT-minT)||1;
+  const minV=Math.min(...values), maxV=Math.max(...values), vSpan=(maxV-minV)||1;
+  const x=t=>points.length===1?(padL+(W-padL-padR)/2):padL+((t-minT)/tSpan)*(W-padL-padR);
+  const y=v=>(H-padB)-((v-minV)/vSpan)*(H-padT-padB);
+  const coords=points.map(p=>[x(new Date(p.date).getTime()),y(p.value),p]);
+  const line=coords.map(([cx,cy])=>`${cx.toFixed(1)},${cy.toFixed(1)}`).join(" ");
+  const dots=coords.map(([cx,cy,p])=>
+    `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="4" fill="${p.source==="web"?"var(--amber)":"var(--pass)"}">`+
+    `<title>${escapeHtml(p.label)} — ${p.value} (${new Date(p.date).toLocaleDateString()})</title></circle>`
+  ).join("");
+  return `<div style="margin-bottom:16px">
+    <div class="tier-sub" style="margin-bottom:4px">${escapeHtml(METRIC_LABELS[metricKey]||metricKey)}</div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:420px;display:block">
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H-padB}" stroke="var(--line)" stroke-width="1"/>
+      <line x1="${padL}" y1="${H-padB}" x2="${W-padR}" y2="${H-padB}" stroke="var(--line)" stroke-width="1"/>
+      <text x="2" y="${padT+8}" font-size="9" fill="var(--dim)" font-family="'IBM Plex Mono'">${maxV}</text>
+      <text x="2" y="${H-padB}" font-size="9" fill="var(--dim)" font-family="'IBM Plex Mono'">${minV}</text>
+      <polyline points="${line}" fill="none" stroke="var(--laser)" stroke-width="1.5"/>
+      ${dots}
+    </svg>
+  </div>`;
+}
+
+function renderProgressionCharts(series){
+  const keys=Object.keys(series).filter(k=>series[k] && series[k].length>0);
+  if(!keys.length) return '<div class="empty" style="padding:14px">No progression data yet — save a Truth Report or search for updates.</div>';
+  return keys.map(k=>svgLineChart(series[k],k)).join("");
+}
+
+function renderWebUpdates(updates){
+  if(!updates.length) return '<div class="tier-sub">No web updates found yet.</div>';
+  return updates.map(u=>`
+    <div class="gc" style="margin-top:8px;border-color:var(--line);border-left-color:var(--laser);background:rgba(195,201,208,.05)">
+      <b style="color:var(--laser)">${escapeHtml(u.source_title||"Untitled source")}</b>
+      <p>${escapeHtml(u.summary)}</p>
+      <div class="tier-sub" style="margin-top:4px">
+        ${u.source_url?`<a href="${escapeHtml(u.source_url)}" target="_blank" rel="noopener" style="color:var(--dim)">source</a> · `:""}
+        ${u.published_at?new Date(u.published_at).toLocaleDateString():"date unknown"}
+      </div>
+    </div>`).join("");
+}
+
+async function toggleAthleteDetails(id){
+  const existing=document.getElementById("details-"+id);
+  if(existing){ existing.remove(); return; }
+  document.querySelectorAll('[id^="details-"]').forEach(el=>el.remove());
+  const row=document.getElementById("athlete-row-"+id);
+  const tr=document.createElement("tr");
+  tr.id="details-"+id;
+  const td=document.createElement("td");
+  td.colSpan=5;
+  td.innerHTML='<div class="empty" style="padding:14px">Loading progression…</div>';
+  tr.appendChild(td);
+  row.after(tr);
+  await refreshAthleteDetails(id);
+}
+
+async function refreshAthleteDetails(id){
+  const tr=document.getElementById("details-"+id);
+  if(!tr) return;
+  const td=tr.firstElementChild;
+  try{
+    const [progRes,updRes]=await Promise.all([
+      fetch(API_BASE+"/athletes/"+id+"/progression"),
+      fetch(API_BASE+"/athletes/"+id+"/updates"),
+    ]);
+    const progression=await progRes.json();
+    const updates=await updRes.json();
+    td.innerHTML=`<div style="padding:14px 4px">
+      <h2 style="margin-bottom:10px">Progression</h2>
+      ${renderProgressionCharts(progression)}
+      <h2 style="margin:16px 0 10px">Web Updates</h2>
+      <button class="chip" onclick="searchForUpdates('${id}')" id="search-btn-${id}">Search for Updates</button>
+      <div id="update-status-${id}"></div>
+      ${renderWebUpdates(updates)}
+    </div>`;
+  }catch(e){
+    td.innerHTML='<div class="empty" style="padding:14px">Failed to load — backend offline?</div>';
+  }
+}
+
+async function searchForUpdates(id){
+  const btn=document.getElementById("search-btn-"+id);
+  const status=document.getElementById("update-status-"+id);
+  btn.disabled=true;
+  status.innerHTML=pipelineHTML([{label:"searching the web via Gemini…",state:"active"}]);
+  try{
+    const ctl=new AbortController(); setTimeout(()=>ctl.abort(),90000);
+    const res=await fetch(API_BASE+"/athletes/"+id+"/search-updates",{method:"POST",signal:ctl.signal});
+    if(!res.ok){ const err=await res.json().catch(()=>({detail:"HTTP "+res.status})); throw new Error(err.detail||"HTTP "+res.status); }
+    const found=await res.json();
+    status.innerHTML=pipelineHTML([{label:`found ${found.length} update(s)`,state:"done"}]);
+    await refreshAthleteDetails(id);
+  }catch(e){
+    status.innerHTML=`<div class="pipeline"><div class="step err">✕ ${escapeHtml(e.message||String(e))}</div></div>`;
+  }finally{
+    btn.disabled=false;
+  }
 }
 
 const PRESETS = {
@@ -435,7 +634,30 @@ function run(){
         <span class="tag">${filmState.mode==="live"?"LIVE API RESULT":filmState.mode==="simulated"?"SIMULATED — BACKEND OFFLINE":"AWAITING FILM UPLOAD"}</span></h2>
       ${filmState.analysis?renderFilmAnalysis(filmState):'<div class="empty" style="padding:18px">No film uploaded yet — drop a clip in the Film Upload panel to populate this section.</div>'}
     </div>
+    ${lastImprovementPlan?renderImprovementPlan(lastImprovementPlan):""}
     </div>`;
+}
+
+function renderImprovementPlan(plan){
+  if(plan.raw) return `<div class="film"><h2 style="margin-bottom:8px">How to Improve</h2><div class="empty" style="padding:18px">Couldn't parse a structured plan this time — try saving again.</div></div>`;
+  const weakAreas=(plan.weak_areas||[]).map(w=>`<span class="rung failed">${escapeHtml(w)}</span>`).join("");
+  const drills=(plan.drills||[]).map(d=>`
+    <tr><td><b>${escapeHtml(d.focus||"")}</b></td><td>${escapeHtml(d.drill||"")}</td>
+        <td style="color:var(--dim);font-size:12px">${escapeHtml(d.why||"")}</td></tr>`).join("");
+  const targets=plan.division_targets||{};
+  const targetRows=Object.entries(targets).map(([div,text])=>`
+    <tr><td><b>${escapeHtml(div.replaceAll("_"," "))}</b></td><td>${escapeHtml(String(text))}</td></tr>`).join("");
+  return `<div class="film">
+    <h2 style="margin-bottom:8px">How to Improve</h2>
+    ${weakAreas?`<div class="ladder">${weakAreas}</div>`:""}
+    ${plan.summary?`<div class="gc" style="margin-top:10px"><b>⚑ Priority</b><p>${escapeHtml(plan.summary)}</p></div>`:""}
+    ${drills?`<table style="margin-top:12px">
+      <tr><th>Focus</th><th>Drill</th><th>Why</th></tr>${drills}
+    </table>`:""}
+    ${targetRows?`<table style="margin-top:12px">
+      <tr><th>Division</th><th>Target</th></tr>${targetRows}
+    </table>`:""}
+  </div>`;
 }
 
 function renderFilmAnalysis(state){
@@ -451,6 +673,8 @@ function renderFilmAnalysis(state){
     ${gradeRungs?`<div class="ladder">${gradeRungs}</div>`:""}
     ${flagsHTML||'<div class="tier-sub">No Game-Changer or NGE-level flags on this film.</div>'}`;
 }
+
+loadSavedAthletes();
 </script>
 </body>
 </html>

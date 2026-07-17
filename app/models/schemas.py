@@ -127,6 +127,23 @@ class EvaluationOut(BaseModel):
     mechanics_grade: Optional[float] = Field(None, ge=0, le=10)
     situational_attributes: Optional[dict] = None
     metric_sieve_results: Optional[dict] = None
+    qualifying_tiers: list[Tier] = []
     is_game_changer: bool = False
+    game_changer_reason: Optional[str] = None
+    makeup_grades: Optional[dict] = None
+    makeup_grade_down: Optional[dict] = None
+    improvement_plan: Optional[dict] = None
     model_used: str = "gemini-3.5-flash"
+    created_at: datetime
+
+
+class WebUpdate(BaseModel):
+    """A web-discovered article or metric change found via Module 8's search."""
+    id: UUID
+    athlete_id: UUID
+    source_title: Optional[str] = None
+    source_url: Optional[str] = None
+    published_at: Optional[datetime] = None
+    summary: str
+    discovered_metrics: Optional[dict] = None
     created_at: datetime

@@ -92,12 +92,31 @@ CREATE TABLE evaluations (
     game_changer_reason   TEXT,
     makeup_grades         JSONB,                    -- Module 6: Size/AA/Play History/Play Style/Character input
     makeup_grade_down     JSONB,                    -- overall P4 grade shifted per classification level
+    improvement_plan      JSONB,                    -- Module 7: drills/recommendations + per-division target numbers
     model_used            VARCHAR(64) DEFAULT 'gemini-3.5-flash',
     created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_eval_athlete ON evaluations (athlete_id);
 CREATE INDEX idx_eval_game_changer ON evaluations (is_game_changer) WHERE is_game_changer;
+
+-- ------------------------------------------------------------
+-- Module 8: web-discovered updates (articles, recruiting-site
+-- metric changes) found by a Gemini web search against each
+-- saved athlete. Feeds the progression chart alongside evaluations.
+-- ------------------------------------------------------------
+CREATE TABLE athlete_web_updates (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    athlete_id          UUID NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
+    source_title        TEXT,
+    source_url          TEXT,
+    published_at        TIMESTAMPTZ,
+    summary             TEXT NOT NULL,
+    discovered_metrics  JSONB,          -- e.g. {"forty_s": 4.41, "weight_lbs": 195}
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_web_updates_athlete ON athlete_web_updates (athlete_id);
 
 -- ------------------------------------------------------------
 -- Module 6: Profile & Makeup grade-down reference (not a table —
