@@ -244,6 +244,14 @@ async def get_athlete(athlete_id: UUID, pool: asyncpg.Pool = Depends(get_pool)):
     return dict(row)
 
 
+@app.delete("/api/v1/athletes/{athlete_id}", status_code=204)
+async def delete_athlete(athlete_id: UUID, pool: asyncpg.Pool = Depends(get_pool)):
+    """Deletes the athlete and cascades to their film uploads and evaluations."""
+    deleted = await repository.delete_athlete(pool, athlete_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Athlete not found.")
+
+
 @app.get("/api/v1/athletes/{athlete_id}/evaluations", response_model=list[EvaluationOut])
 async def list_athlete_evaluations(athlete_id: UUID, pool: asyncpg.Pool = Depends(get_pool)):
     """Full evaluation history for one athlete — every Truth Report run against them."""

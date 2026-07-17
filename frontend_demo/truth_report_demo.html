@@ -108,6 +108,10 @@
       <button class="chip" onclick="loadPreset('burner')">Undersized burner</button>
       <button class="chip" onclick="loadPreset('rb')">Bubble RB</button>
     </div>
+    <div class="row2">
+      <div><label>First Name</label><input id="first_name" type="text" placeholder="Jordan"></div>
+      <div><label>Last Name</label><input id="last_name" type="text" placeholder="Rivers"></div>
+    </div>
     <label>Position</label>
     <select id="position">
       <option>QB</option><option>RB</option><option>WR</option><option selected>DB</option>
@@ -183,11 +187,22 @@
     <input id="filepick" type="file" accept=".mp4,.mov,.avi,video/*" style="display:none"
            onchange="handleFile(this.files[0])">
     <div id="filmstatus"></div>
+
+    <button class="run" style="margin-top:14px;background:linear-gradient(180deg,var(--pass),#2f9d5c 90%);color:#08150E"
+            onclick="saveTruthReport()">Save Truth Report</button>
+    <div id="savestatus"></div>
   </div>
 
   <div class="card" id="report">
     <h2>Truth Report</h2>
     <div class="empty">Load a preset or enter combine numbers, then run the sieve.</div>
+  </div>
+</div>
+
+<div class="wrap" style="grid-template-columns:1fr">
+  <div class="card">
+    <h2>Saved Athletes</h2>
+    <div id="savedathletes"><div class="empty">Loading…</div></div>
   </div>
 </div>
 
@@ -326,8 +341,9 @@ function simulatedFilmGrades(pos){
 // ===== Film upload pipeline (Module 1) =====
 // Tries the real backend at localhost:8000 first; falls back to simulated
 // output so the demo works standalone.
-let filmState = {name:null, mode:null, analysis:null};
-const API = "http://localhost:8000/api/v1/scout/analyze-film";
+let filmState = {name:null, mode:null, analysis:null, file:null};
+const API_BASE = "http://localhost:8000/api/v1";
+const API = API_BASE + "/scout/analyze-film";
 
 function pipelineHTML(steps){
   return '<div class="pipeline">'+steps.map(s=>
@@ -340,7 +356,7 @@ async function handleFile(file){
   const ok=/\.(mp4|mov|avi)$/i.test(file.name);
   const box=document.getElementById("filmstatus");
   if(!ok){box.innerHTML='<div class="pipeline"><div class="step err">✕ Invalid video format (.mp4 / .mov / .avi)</div></div>';return;}
-  filmState={name:file.name, mode:null, analysis:null};
+  filmState={name:file.name, mode:null, analysis:null, file:file};
   const safeName=escapeHtml(file.name);
   box.innerHTML=`<div class="filmname">${safeName} · ${(file.size/1048576).toFixed(1)} MB</div>`+
     pipelineHTML([{label:"upload received",state:"done"},{label:"sending to gemini-3.5-flash…",state:"active"},{label:"awaiting analysis",state:""}]);
@@ -363,6 +379,76 @@ async function handleFile(file){
     filmState.mode="simulated"; filmState.analysis=simulatedFilmGrades(document.getElementById("position").value);
   }
   run();
+}
+
+// ===== Persistence — saves the athlete/film/evaluation to the backend =====
+function setSaveStatus(html){ document.getElementById("savestatus").innerHTML=html; }
+
+async function saveTruthReport(){
+  const first=document.getElementById("first_name").value.trim();
+  const last=document.getElementById("last_name").value.trim();
+  if(!first||!last){ setSaveStatus('<div class="pipeline"><div class="step err">✕ Enter first and last name to save.</div></div>'); return; }
+  if(!filmState.file){ setSaveStatus('<div class="pipeline"><div class="step err">✕ Upload game film before saving — Truth Report requires film.</div></div>'); return; }
+
+  const athlete={first_name:first,last_name:last,position:document.getElementById("position").value,
+    height_in:num("height"),weight_lbs:num("weight"),forty_s:num("forty"),shuttle_s:num("shuttle"),
+    bench_lbs:num("bench"),squat_lbs:num("squat"),gpa:num("gpa"),sat:num("sat"),act:num("act")};
+  const makeup={size:document.getElementById("mk_size").value||null,
+    athletic_ability:document.getElementById("mk_aa").value||null,
+    play_history:document.getElementById("mk_history").value||null,
+    play_style:document.getElementById("mk_style").value||null,
+    character:document.getElementById("mk_character").value||null};
+  const hasMakeup=Object.values(makeup).some(v=>v!==null);
+
+  setSaveStatus(pipelineHTML([{label:"saving athlete, film, and evaluation…",state:"active"}]));
+  try{
+    const fd=new FormData();
+    fd.append("file",filmState.file);
+    fd.append("position",document.getElementById("position").value);
+    fd.append("athlete_json",JSON.stringify(athlete));
+    if(hasMakeup) fd.append("makeup_json",JSON.stringify(makeup));
+    const ctl=new AbortController(); setTimeout(()=>ctl.abort(),90000);
+    const res=await fetch(API_BASE+"/scout/truth-report",{method:"POST",body:fd,signal:ctl.signal});
+    if(!res.ok){ const err=await res.json().catch(()=>({detail:"HTTP "+res.status})); throw new Error(err.detail||"HTTP "+res.status); }
+    const data=await res.json();
+    setSaveStatus(pipelineHTML([{label:`saved — athlete ${data.athlete_id.slice(0,8)}, evaluation ${data.evaluation_id.slice(0,8)}`,state:"done"}]));
+    loadSavedAthletes();
+  }catch(e){
+    setSaveStatus(`<div class="pipeline"><div class="step err">✕ ${escapeHtml(e.message||String(e))}</div></div>`);
+  }
+}
+
+// ===== Saved Athletes panel =====
+async function loadSavedAthletes(){
+  const box=document.getElementById("savedathletes");
+  try{
+    const res=await fetch(API_BASE+"/athletes");
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const athletes=await res.json();
+    if(!athletes.length){ box.innerHTML='<div class="empty">No athletes saved yet — save a Truth Report to see it here.</div>'; return; }
+    box.innerHTML=`<table><tr><th>Name</th><th>Position</th><th>Combine</th><th>Saved</th><th></th></tr>${
+      athletes.map(a=>`<tr>
+        <td>${escapeHtml(a.first_name)} ${escapeHtml(a.last_name)}</td>
+        <td>${escapeHtml(a.position)}</td>
+        <td style="font-family:'IBM Plex Mono';font-size:12px;color:var(--dim)">${a.height_in??"—"} in · ${a.weight_lbs??"—"} lbs · ${a.forty_s??"—"}s</td>
+        <td style="font-family:'IBM Plex Mono';font-size:12px;color:var(--dim)">${new Date(a.created_at).toLocaleString()}</td>
+        <td><button class="chip" onclick="deleteAthlete('${a.id}')">Delete</button></td>
+      </tr>`).join("")
+    }</table>`;
+  }catch(e){
+    box.innerHTML=`<div class="empty">Backend offline — start uvicorn on :8000 to see saved athletes.</div>`;
+  }
+}
+
+async function deleteAthlete(id){
+  if(!confirm("Delete this athlete and all their evaluations? This can't be undone.")) return;
+  try{
+    const res=await fetch(API_BASE+"/athletes/"+id,{method:"DELETE"});
+    if(!res.ok && res.status!==404) throw new Error("HTTP "+res.status);
+    loadSavedAthletes();
+  }catch(e){
+    alert("Failed to delete: "+(e.message||e));
+  }
 }
 
 const PRESETS = {
@@ -451,6 +537,8 @@ function renderFilmAnalysis(state){
     ${gradeRungs?`<div class="ladder">${gradeRungs}</div>`:""}
     ${flagsHTML||'<div class="tier-sub">No Game-Changer or NGE-level flags on this film.</div>'}`;
 }
+
+loadSavedAthletes();
 </script>
 </body>
 </html>

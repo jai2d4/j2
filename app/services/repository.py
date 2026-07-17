@@ -40,6 +40,12 @@ async def list_athletes(pool: asyncpg.Pool, limit: int = 100) -> list[asyncpg.Re
     )
 
 
+async def delete_athlete(pool: asyncpg.Pool, athlete_id: UUID) -> bool:
+    """Deletes the athlete and, via ON DELETE CASCADE, their film uploads and evaluations."""
+    result = await pool.execute("DELETE FROM athletes WHERE id = $1", athlete_id)
+    return result != "DELETE 0"
+
+
 async def create_film_upload(
     pool: asyncpg.Pool,
     *,
