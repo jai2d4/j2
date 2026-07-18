@@ -35,5 +35,5 @@ uvicorn app.main:app --reload
 - `GET  /api/v1/health`
 - `POST /api/v1/scout/metric-sieve`   — thresholds only, no film
 - `POST /api/v1/scout/makeup-grade`   — Profile & Makeup rubric, grade-down across classifications
-- `POST /api/v1/scout/analyze-film`   — Gemini native video upload
-- `POST /api/v1/scout/truth-report`   — sieve + film combined
+- `POST /api/v1/scout/analyze-film`   — Gemini native video upload OR a YouTube URL (`youtube_url` form field, mutually exclusive with `file`)
+- `POST /api/v1/scout/truth-report`   — sieve + film combined; film may be an upload or a `youtube_url`

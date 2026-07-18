@@ -182,6 +182,11 @@
     </div>
     <input id="filepick" type="file" accept=".mp4,.mov,.avi,video/*" style="display:none"
            onchange="handleFile(this.files[0])">
+    <label style="margin-top:12px">Or paste a YouTube link</label>
+    <div class="row2" style="grid-template-columns:1fr auto">
+      <input id="ytUrl" type="url" placeholder="https://youtube.com/watch?v=…">
+      <button class="chip" style="padding:8px 16px" onclick="handleYoutubeUrl()">Analyze</button>
+    </div>
     <div id="filmstatus"></div>
   </div>
 
@@ -341,13 +346,27 @@ async function handleFile(file){
   const box=document.getElementById("filmstatus");
   if(!ok){box.innerHTML='<div class="pipeline"><div class="step err">✕ Invalid video format (.mp4 / .mov / .avi)</div></div>';return;}
   filmState={name:file.name, mode:null, analysis:null};
-  const safeName=escapeHtml(file.name);
-  box.innerHTML=`<div class="filmname">${safeName} · ${(file.size/1048576).toFixed(1)} MB</div>`+
+  const fd=new FormData(); fd.append("file",file); fd.append("position",document.getElementById("position").value);
+  await _submitFilm(fd, `${escapeHtml(file.name)} · ${(file.size/1048576).toFixed(1)} MB`, escapeHtml(file.name));
+}
+
+function handleYoutubeUrl(){
+  const url=document.getElementById("ytUrl").value.trim();
+  const box=document.getElementById("filmstatus");
+  const isYoutube=/^https?:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//i.test(url);
+  if(!isYoutube){box.innerHTML='<div class="pipeline"><div class="step err">✕ Not a valid YouTube URL</div></div>';return;}
+  filmState={name:url, mode:null, analysis:null};
+  const fd=new FormData(); fd.append("youtube_url",url); fd.append("position",document.getElementById("position").value);
+  _submitFilm(fd, escapeHtml(url), escapeHtml(url));
+}
+
+async function _submitFilm(fd, uploadedLabel, safeName){
+  const box=document.getElementById("filmstatus");
+  box.innerHTML=`<div class="filmname">${uploadedLabel}</div>`+
     pipelineHTML([{label:"upload received",state:"done"},{label:"sending to gemini-3.5-flash…",state:"active"},{label:"awaiting analysis",state:""}]);
 
   // Attempt live backend
   try{
-    const fd=new FormData(); fd.append("file",file); fd.append("position",document.getElementById("position").value);
     const ctl=new AbortController(); setTimeout(()=>ctl.abort(),90000);
     const res=await fetch(API,{method:"POST",body:fd,signal:ctl.signal});
     if(!res.ok) throw new Error("HTTP "+res.status);

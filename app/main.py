@@ -40,6 +40,13 @@ ai_client = genai.Client()
 Path(settings.UPLOAD_TMP_DIR).mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTS = (".mp4", ".mov", ".avi")
+YOUTUBE_HOSTS = ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be")
+
+
+def _is_youtube_url(url: str) -> bool:
+    from urllib.parse import urlparse
+    host = urlparse(url).hostname or ""
+    return host.lower() in YOUTUBE_HOSTS
 
 
 @app.get("/api/v1/health")
@@ -79,10 +86,25 @@ async def makeup_grade(grades: MakeupGrades):
 
 @app.post("/api/v1/scout/analyze-film")
 async def analyze_player_film(
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
+    youtube_url: Optional[str] = Form(None),
     position: Position = Form(Position.DB),
 ):
-    """Module 1: native Gemini video ingestion → structured film grades."""
+    """Module 1: native Gemini video ingestion → structured film grades.
+    Accepts either an uploaded file OR a YouTube URL (game film posted
+    online) — Gemini fetches YouTube URLs natively, no download needed."""
+    if bool(file) == bool(youtube_url):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide exactly one of: a video file upload, or a youtube_url.",
+        )
+
+    if youtube_url:
+        if not _is_youtube_url(youtube_url):
+            raise HTTPException(status_code=400, detail="Not a valid YouTube URL.")
+        video_part = types.Part(file_data=types.FileData(file_uri=youtube_url))
+        return await _run_film_analysis(video_part, position)
+
     if not file.filename or not file.filename.lower().endswith(ALLOWED_EXTS):
         raise HTTPException(status_code=400, detail="Invalid video format.")
 
@@ -95,10 +117,17 @@ async def analyze_player_film(
             buffer.write(data)
 
         video_file = ai_client.files.upload(file=video_path)
+        return await _run_film_analysis(video_file, position)
+    finally:
+        if os.path.exists(video_path):
+            os.remove(video_path)
 
+
+async def _run_film_analysis(video_content, position: Position) -> dict:
+    try:
         response = ai_client.models.generate_content(
             model=settings.GEMINI_MODEL,
-            contents=[video_file, build_scouting_prompt(position)],
+            contents=[video_content, build_scouting_prompt(position)],
             config=types.GenerateContentConfig(response_mime_type="application/json"),
         )
 
@@ -119,17 +148,15 @@ async def analyze_player_film(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if os.path.exists(video_path):
-            os.remove(video_path)
 
 
 @app.post("/api/v1/scout/truth-report")
 async def truth_report(
-    file: UploadFile = File(...),
     position: Position = Form(Position.DB),
     athlete_json: str = Form(..., description="AthleteCreate payload as JSON string"),
     makeup_json: Optional[str] = Form(None, description="MakeupGrades payload as JSON string"),
+    file: Optional[UploadFile] = File(None),
+    youtube_url: Optional[str] = Form(None),
 ):
     """Module 4: Truth Report Panel — combines the metric sieve (hard laser
     thresholds), the Profile & Makeup grade-down, and Gemini film analysis
@@ -149,7 +176,7 @@ async def truth_report(
             makeup = grade_down(overall)
 
     sieve = await metric_sieve(athlete)
-    film = await analyze_player_film(file=file, position=position)
+    film = await analyze_player_film(file=file, youtube_url=youtube_url, position=position)
 
     return {
         "success": True,
