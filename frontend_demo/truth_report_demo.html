@@ -170,6 +170,8 @@
     </div>
 
     <h2 style="margin-top:24px">Film Upload — Module 1</h2>
+    <label>Which player? <span style="color:var(--dim);text-transform:none;letter-spacing:0">(required on multi-player footage)</span></label>
+    <input id="playerIdentifier" type="text" placeholder="e.g. white jersey #12, or green #5 on defense">
     <div class="drop" id="drop" tabindex="0"
          ondragover="event.preventDefault();this.classList.add('over')"
          ondragleave="this.classList.remove('over')"
@@ -308,7 +310,7 @@ const CRITICAL_FACTORS={
 // Simulated Gemini film grades (live build calls gemini-3.5-flash with the
 // same critical-factors rules) — deterministic so the demo always shows
 // one Game-Changer flag and one NGE flag alongside ordinary grades.
-function simulatedFilmGrades(pos){
+function simulatedFilmGrades(pos, playerId){
   const factors=CRITICAL_FACTORS[pos]||CRITICAL_FACTORS.DB;
   // Cycle through the three ordinary grades only; GAME_CHANGER and NGE are
   // reserved for the two chosen extreme indices below, so every extreme
@@ -325,7 +327,13 @@ function simulatedFilmGrades(pos){
   const gcFactor=factors[0], ngeFactor=factors[ngeIndex];
   flags.push(`Elite ${gcFactor.toLowerCase()} — a legitimate difference-maker trait on tape.`);
   if(ngeFactor!==gcFactor) flags.push(`${ngeFactor} graded NGE — a real deficiency shows up repeatedly on this film.`);
-  return {film_grades,flags};
+  return {
+    player_identified: true,
+    identification_note: playerId
+      ? `(Simulated) Tracked "${playerId}" throughout the clip.`
+      : "(Simulated) No player_identifier given — assumed single-subject clip.",
+    film_grades, flags,
+  };
 }
 
 // ===== Film upload pipeline (Module 1) =====
@@ -340,6 +348,10 @@ function pipelineHTML(steps){
   ).join("")+"</div>";
 }
 
+function playerIdentifier(){
+  return document.getElementById("playerIdentifier").value.trim();
+}
+
 async function handleFile(file){
   if(!file) return;
   const ok=/\.(mp4|mov|avi)$/i.test(file.name);
@@ -347,6 +359,7 @@ async function handleFile(file){
   if(!ok){box.innerHTML='<div class="pipeline"><div class="step err">✕ Invalid video format (.mp4 / .mov / .avi)</div></div>';return;}
   filmState={name:file.name, mode:null, analysis:null};
   const fd=new FormData(); fd.append("file",file); fd.append("position",document.getElementById("position").value);
+  const pid=playerIdentifier(); if(pid) fd.append("player_identifier",pid);
   await _submitFilm(fd, `${escapeHtml(file.name)} · ${(file.size/1048576).toFixed(1)} MB`, escapeHtml(file.name));
 }
 
@@ -357,6 +370,7 @@ function handleYoutubeUrl(){
   if(!isYoutube){box.innerHTML='<div class="pipeline"><div class="step err">✕ Not a valid YouTube URL</div></div>';return;}
   filmState={name:url, mode:null, analysis:null};
   const fd=new FormData(); fd.append("youtube_url",url); fd.append("position",document.getElementById("position").value);
+  const pid=playerIdentifier(); if(pid) fd.append("player_identifier",pid);
   _submitFilm(fd, escapeHtml(url), escapeHtml(url));
 }
 
@@ -379,7 +393,7 @@ async function _submitFilm(fd, uploadedLabel, safeName){
     await new Promise(r=>setTimeout(r,900));
     box.innerHTML=`<div class="filmname">${safeName}</div>`+
       pipelineHTML([{label:"upload received",state:"done"},{label:"backend offline — simulated analysis",state:"done"},{label:"start uvicorn on :8000 for live Gemini calls",state:"active"}]);
-    filmState.mode="simulated"; filmState.analysis=simulatedFilmGrades(document.getElementById("position").value);
+    filmState.mode="simulated"; filmState.analysis=simulatedFilmGrades(document.getElementById("position").value, playerIdentifier());
   }
   run();
 }
@@ -461,14 +475,21 @@ function renderFilmAnalysis(state){
   const a=state.analysis||{};
   const grades=a.film_grades||{};
   const flags=a.flags||[];
+  const idNote=a.identification_note;
+  const identified=a.player_identified;
+  const idHTML=idNote
+    ? `<div class="tier-sub" style="margin:6px 0 10px;color:${identified===false?"var(--fail)":"var(--dim)"}">
+        ${identified===false?"✕ PLAYER NOT IDENTIFIED — ":"✓ "}${escapeHtml(idNote)}</div>`
+    : "";
   const gradeRungs=Object.entries(grades).map(([factor,rank])=>{
     const cls=rank==="GAME_CHANGER"?"lit":rank==="NGE"?"failed":"";
     return `<span class="rung ${cls}">${escapeHtml(factor)}: ${RANK_LABEL[rank]||escapeHtml(rank)}</span>`;
   }).join("");
   const flagsHTML=flags.map(f=>`<div class="gc" style="margin-top:10px"><b>⚑ Flag</b><p>${escapeHtml(f)}</p></div>`).join("");
   return `<div class="filmname" style="margin:0 0 8px">${escapeHtml(state.name)}</div>
+    ${idHTML}
     ${gradeRungs?`<div class="ladder">${gradeRungs}</div>`:""}
-    ${flagsHTML||'<div class="tier-sub">No Game-Changer or NGE-level flags on this film.</div>'}`;
+    ${identified===false?"":(flagsHTML||'<div class="tier-sub">No Game-Changer or NGE-level flags on this film.</div>')}`;
 }
 </script>
 </body>

@@ -89,10 +89,18 @@ async def analyze_player_film(
     file: Optional[UploadFile] = File(None),
     youtube_url: Optional[str] = Form(None),
     position: Position = Form(Position.DB),
+    player_identifier: Optional[str] = Form(
+        None,
+        description="Who to grade when the film shows multiple players — "
+                     "e.g. 'white jersey #12' or 'DB, green #5'.",
+    ),
 ):
     """Module 1: native Gemini video ingestion → structured film grades.
     Accepts either an uploaded file OR a YouTube URL (game film posted
-    online) — Gemini fetches YouTube URLs natively, no download needed."""
+    online, including a cell-phone clip uploaded straight to YouTube) —
+    Gemini fetches YouTube URLs natively, no download needed. On footage
+    with multiple players (a highlight reel, a full game), pass
+    player_identifier so grading locks onto the right athlete."""
     if bool(file) == bool(youtube_url):
         raise HTTPException(
             status_code=400,
@@ -103,7 +111,7 @@ async def analyze_player_film(
         if not _is_youtube_url(youtube_url):
             raise HTTPException(status_code=400, detail="Not a valid YouTube URL.")
         video_part = types.Part(file_data=types.FileData(file_uri=youtube_url))
-        return await _run_film_analysis(video_part, position)
+        return await _run_film_analysis(video_part, position, player_identifier)
 
     if not file.filename or not file.filename.lower().endswith(ALLOWED_EXTS):
         raise HTTPException(status_code=400, detail="Invalid video format.")
@@ -117,17 +125,19 @@ async def analyze_player_film(
             buffer.write(data)
 
         video_file = ai_client.files.upload(file=video_path)
-        return await _run_film_analysis(video_file, position)
+        return await _run_film_analysis(video_file, position, player_identifier)
     finally:
         if os.path.exists(video_path):
             os.remove(video_path)
 
 
-async def _run_film_analysis(video_content, position: Position) -> dict:
+async def _run_film_analysis(
+    video_content, position: Position, player_identifier: Optional[str] = None,
+) -> dict:
     try:
         response = ai_client.models.generate_content(
             model=settings.GEMINI_MODEL,
-            contents=[video_content, build_scouting_prompt(position)],
+            contents=[video_content, build_scouting_prompt(position, player_identifier)],
             config=types.GenerateContentConfig(response_mime_type="application/json"),
         )
 
@@ -136,12 +146,16 @@ async def _run_film_analysis(video_content, position: Position) -> dict:
         except (json.JSONDecodeError, TypeError):
             analysis = {"raw": response.text}
 
+        as_dict = analysis if isinstance(analysis, dict) else {}
         return {
             "success": True,
             "position": position.value,
+            "player_identifier": player_identifier,
             "analysis": analysis,
-            "film_grades": analysis.get("film_grades", {}) if isinstance(analysis, dict) else {},
-            "flags": analysis.get("flags", []) if isinstance(analysis, dict) else [],
+            "player_identified": as_dict.get("player_identified"),
+            "identification_note": as_dict.get("identification_note"),
+            "film_grades": as_dict.get("film_grades", {}),
+            "flags": as_dict.get("flags", []),
         }
 
     except HTTPException:
@@ -157,6 +171,7 @@ async def truth_report(
     makeup_json: Optional[str] = Form(None, description="MakeupGrades payload as JSON string"),
     file: Optional[UploadFile] = File(None),
     youtube_url: Optional[str] = Form(None),
+    player_identifier: Optional[str] = Form(None),
 ):
     """Module 4: Truth Report Panel — combines the metric sieve (hard laser
     thresholds), the Profile & Makeup grade-down, and Gemini film analysis
@@ -176,7 +191,10 @@ async def truth_report(
             makeup = grade_down(overall)
 
     sieve = await metric_sieve(athlete)
-    film = await analyze_player_film(file=file, youtube_url=youtube_url, position=position)
+    film = await analyze_player_film(
+        file=file, youtube_url=youtube_url, position=position,
+        player_identifier=player_identifier,
+    )
 
     return {
         "success": True,
@@ -189,6 +207,8 @@ async def truth_report(
         "game_changer_reason": sieve.game_changer_reason,
         "metric_sieve": sieve.model_dump(),
         "makeup_grade": makeup.model_dump() if makeup else None,
+        "player_identified": film["player_identified"],
+        "identification_note": film["identification_note"],
         "film_analysis": film["analysis"],
         "film_grades": film["film_grades"],
         "film_flags": film["flags"],
