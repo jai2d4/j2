@@ -15,6 +15,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from google import genai
 from google.genai import types
 
@@ -62,6 +63,17 @@ def _is_youtube_url(url: str) -> bool:
 @app.get("/api/v1/health")
 async def health():
     return {"status": "ok", "model": settings.GEMINI_MODEL, "env": settings.APP_ENV}
+
+
+_DEMO_PATH = Path(__file__).resolve().parent.parent / "frontend_demo" / "truth_report_demo.html"
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def truth_report_panel():
+    """Serves the Truth Report demo panel from the app's own origin, so its
+    fetch() calls resolve as same-origin — works identically on localhost
+    and on the deployed URL, no separate static host needed."""
+    return _DEMO_PATH.read_text()
 
 
 @app.post("/api/v1/scout/metric-sieve", response_model=SieveResult, dependencies=[Depends(require_api_key)])

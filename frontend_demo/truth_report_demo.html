@@ -337,10 +337,15 @@ function simulatedFilmGrades(pos, playerId){
 }
 
 // ===== Film upload pipeline (Module 1) =====
-// Tries the real backend at localhost:8000 first; falls back to simulated
-// output so the demo works standalone.
+// Tries the real backend first; falls back to simulated output so the demo
+// works standalone. When this page is served BY the FastAPI app itself
+// (locally on :8000, or from the deployed Render URL) location.origin is
+// already the API's own origin, so a relative path just works. Opening
+// this file directly off disk (file://) has no usable origin, so fall
+// back to localhost:8000 for local dev.
 let filmState = {name:null, mode:null, analysis:null};
-const API = "http://localhost:8000/api/v1/scout/analyze-film";
+const API_BASE = location.origin.startsWith("http") ? location.origin : "http://localhost:8000";
+const API = API_BASE + "/api/v1/scout/analyze-film";
 
 function pipelineHTML(steps){
   return '<div class="pipeline">'+steps.map(s=>

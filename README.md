@@ -51,7 +51,7 @@ This ships with a [Render](https://render.com) Blueprint (`render.yaml` + `Docke
    - a free web service running the app via `Dockerfile`, wired to that database
 3. Render will prompt for one value it can't infer: **`GEMINI_API_KEY`** — paste your Gemini key.
 4. Optionally set **`API_KEY`** too, to lock the app behind a shared secret before sharing the URL (see Auth below). Leave it blank to keep the app open.
-5. Deploy. Render gives you a `https://tru-scouting-engine-xxxx.onrender.com` URL — that's the whole app, live, no local setup required.
+5. Deploy. Render gives you a `https://tru-scouting-engine-xxxx.onrender.com` URL — open it directly in a browser and you get the Truth Report panel itself (the app serves its own frontend at `/`), talking to the real API on the same origin. No separate hosting for the UI, no local file to open.
 
 The free tier spins down after 15 minutes idle and takes ~30–60s to wake back up on the next request — normal for free hosting, not a bug. Upgrading the web service's plan in Render removes that.
 
