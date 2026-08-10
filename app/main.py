@@ -4,27 +4,37 @@ TRU Scouting Engine — FastAPI entrypoint.
 Module 1  → /api/v1/scout/analyze-film   (Gemini native video ingestion)
 Modules 2/3 → app.services.metric_sieve   (hard-coded positional matrices)
 Module 4  → /api/v1/scout/truth-report   (combined film + sieve output)
-Module 5  → db/init_schema.sql           (relational threshold matrix)
+Module 5  → db/init_schema.sql, app.core.db, app.routers.{athletes,evaluations}
+Module 6  → /api/v1/scout/makeup-grade   (Profile & Makeup grade-down)
 """
 import json
+import logging
 import os
 from pathlib import Path
+from uuid import UUID
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
 
 from typing import Optional
 
+from app.core.auth import require_api_key
 from app.core.config import get_settings
+from app.core.db import best_effort_session
+from app.models import orm
 from app.models.schemas import AthleteCreate, GradeDown, MakeupGrades, Position, SieveResult
+from app.routers import athletes, evaluations
 from app.services.film_grading import build_scouting_prompt
 from app.services.makeup_grade import average_makeup_grade, grade_down
 from app.services.metric_sieve import run_sieve
 
+logger = logging.getLogger("tru.main")
 settings = get_settings()
 app = FastAPI(title="TRU_Scouting_Engine_Backend", version="1.0.0")
+app.include_router(athletes.router)
+app.include_router(evaluations.router)
 
 # Allow the local demo panel (file:// or localhost) to call the API
 app.add_middleware(
@@ -54,7 +64,7 @@ async def health():
     return {"status": "ok", "model": settings.GEMINI_MODEL, "env": settings.APP_ENV}
 
 
-@app.post("/api/v1/scout/metric-sieve", response_model=SieveResult)
+@app.post("/api/v1/scout/metric-sieve", response_model=SieveResult, dependencies=[Depends(require_api_key)])
 async def metric_sieve(athlete: AthleteCreate):
     """Modules 2 & 3: run laser-metric-first structural validation against
     the positional logic matrix. No film required."""
@@ -72,7 +82,7 @@ async def metric_sieve(athlete: AthleteCreate):
     )
 
 
-@app.post("/api/v1/scout/makeup-grade", response_model=GradeDown)
+@app.post("/api/v1/scout/makeup-grade", response_model=GradeDown, dependencies=[Depends(require_api_key)])
 async def makeup_grade(grades: MakeupGrades):
     """Module 6: Profile & Makeup rubric — grades Size, Athletic Ability, Play
     History, Play Style, and Character against the P4 standard, then shows
@@ -84,7 +94,7 @@ async def makeup_grade(grades: MakeupGrades):
     return grade_down(overall)
 
 
-@app.post("/api/v1/scout/analyze-film")
+@app.post("/api/v1/scout/analyze-film", dependencies=[Depends(require_api_key)])
 async def analyze_player_film(
     file: Optional[UploadFile] = File(None),
     youtube_url: Optional[str] = Form(None),
@@ -164,7 +174,7 @@ async def _run_film_analysis(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/v1/scout/truth-report")
+@app.post("/api/v1/scout/truth-report", dependencies=[Depends(require_api_key)])
 async def truth_report(
     position: Position = Form(Position.DB),
     athlete_json: str = Form(..., description="AthleteCreate payload as JSON string"),
@@ -172,10 +182,15 @@ async def truth_report(
     file: Optional[UploadFile] = File(None),
     youtube_url: Optional[str] = Form(None),
     player_identifier: Optional[str] = Form(None),
+    athlete_id: Optional[UUID] = Form(
+        None, description="Link this report to an existing athlete instead of creating a new one.",
+    ),
 ):
     """Module 4: Truth Report Panel — combines the metric sieve (hard laser
     thresholds), the Profile & Makeup grade-down, and Gemini film analysis
-    into one user-facing evaluation."""
+    into one user-facing evaluation. Best-effort persists the athlete (if
+    new) and the evaluation to PostgreSQL — a DB outage degrades the report
+    to "not saved" rather than failing the request."""
     try:
         athlete = AthleteCreate(**json.loads(athlete_json))
     except Exception as e:
@@ -196,9 +211,17 @@ async def truth_report(
         player_identifier=player_identifier,
     )
 
+    saved_athlete_id, saved_evaluation_id = await _persist_evaluation(
+        athlete=athlete, athlete_id=athlete_id, position=position, sieve=sieve,
+        makeup_json=makeup_json, makeup=makeup, film=film,
+    )
+
     return {
         "success": True,
         "athlete": f"{athlete.first_name} {athlete.last_name}",
+        "athlete_id": saved_athlete_id,
+        "evaluation_id": saved_evaluation_id,
+        "persisted": saved_evaluation_id is not None,
         "position": position.value,
         "projected_tier": sieve.tier.value,
         "qualifying_tiers": [t.value for t in sieve.qualifying_tiers],
@@ -213,3 +236,51 @@ async def truth_report(
         "film_grades": film["film_grades"],
         "film_flags": film["flags"],
     }
+
+
+async def _persist_evaluation(
+    *, athlete: AthleteCreate, athlete_id: Optional[UUID], position: Position,
+    sieve: SieveResult, makeup_json: Optional[str], makeup: Optional[GradeDown], film: dict,
+) -> tuple[Optional[str], Optional[str]]:
+    """Best-effort save; returns (athlete_id, evaluation_id) as strings, or
+    (None, None) if the DB was unavailable. Never raises."""
+    async with best_effort_session() as session:
+        if session is None:
+            return None, None
+        try:
+            if athlete_id is not None:
+                athlete_row = await session.get(orm.Athlete, athlete_id)
+                if athlete_row is None:
+                    logger.warning("truth-report: athlete_id %s not found, creating new athlete instead", athlete_id)
+                    athlete_row = orm.Athlete(**athlete.model_dump())
+                    session.add(athlete_row)
+            else:
+                athlete_row = orm.Athlete(**athlete.model_dump())
+                session.add(athlete_row)
+            await session.flush()  # assigns athlete_row.id
+
+            evaluation_row = orm.Evaluation(
+                athlete_id=athlete_row.id,
+                position_evaluated=position.value,
+                projected_tier=sieve.tier.value,
+                metric_sieve_results=sieve.model_dump(mode="json"),
+                qualifying_tiers=[t.value for t in sieve.qualifying_tiers],
+                is_game_changer=sieve.is_game_changer,
+                game_changer_reason=sieve.game_changer_reason,
+                makeup_grades=json.loads(makeup_json) if makeup_json else None,
+                makeup_grade_down=makeup.model_dump(mode="json") if makeup else None,
+                player_identifier=film.get("player_identifier"),
+                player_identified=film.get("player_identified"),
+                identification_note=film.get("identification_note"),
+                film_grades=film["film_grades"],
+                film_flags=film["flags"],
+                film_analysis=film["analysis"] if isinstance(film["analysis"], dict) else {"raw": film["analysis"]},
+                model_used=settings.GEMINI_MODEL,
+            )
+            session.add(evaluation_row)
+            await session.commit()
+            return str(athlete_row.id), str(evaluation_row.id)
+        except Exception as e:
+            logger.warning("truth-report: persistence failed, continuing without it: %s", e)
+            await session.rollback()
+            return None, None

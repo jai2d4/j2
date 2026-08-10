@@ -82,16 +82,18 @@ CREATE TABLE evaluations (
     film_id               UUID REFERENCES film_uploads(id) ON DELETE SET NULL,
     position_evaluated    VARCHAR(4) NOT NULL,
     projected_tier        VARCHAR(16),             -- highest tier where all hard metrics pass
-    physical_projection   JSONB,                   -- raw Gemini structured output
-    explosive_traits      JSONB,
-    mechanics_grade       NUMERIC(3,1) CHECK (mechanics_grade BETWEEN 0 AND 10),
-    situational_attributes JSONB,
     metric_sieve_results  JSONB,                   -- per-threshold pass/fail detail
     qualifying_tiers      VARCHAR(16)[],            -- every tier cleared, best to worst
     is_game_changer       BOOLEAN NOT NULL DEFAULT FALSE,  -- out-of-bracket flag
     game_changer_reason   TEXT,
     makeup_grades         JSONB,                    -- Module 6: Size/AA/Play History/Play Style/Character input
     makeup_grade_down     JSONB,                    -- overall P4 grade shifted per classification level
+    player_identifier     TEXT,                     -- who the film request asked Gemini to isolate
+    player_identified     BOOLEAN,                   -- whether Gemini could confidently locate that player
+    identification_note   TEXT,
+    film_grades           JSONB,                     -- Module 1: per-critical-factor rank
+    film_flags            JSONB,                      -- Module 1: Game-Changer/NGE callouts only
+    film_analysis         JSONB,                      -- Module 1: raw Gemini structured output
     model_used            VARCHAR(64) DEFAULT 'gemini-3.5-flash',
     created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );

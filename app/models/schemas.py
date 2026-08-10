@@ -121,12 +121,21 @@ class EvaluationOut(BaseModel):
     athlete_id: UUID
     film_id: Optional[UUID] = None
     position_evaluated: Position
-    projected_tier: Tier
-    physical_projection: Optional[dict] = None
-    explosive_traits: Optional[dict] = None
-    mechanics_grade: Optional[float] = Field(None, ge=0, le=10)
-    situational_attributes: Optional[dict] = None
+    projected_tier: Optional[Tier] = None
+    qualifying_tiers: list[str] = []
     metric_sieve_results: Optional[dict] = None
     is_game_changer: bool = False
+    game_changer_reason: Optional[str] = None
+    makeup_grades: Optional[dict] = None
+    makeup_grade_down: Optional[dict] = None
+    player_identifier: Optional[str] = None
+    player_identified: Optional[bool] = None
+    identification_note: Optional[str] = None
+    film_grades: Optional[dict] = None
+    film_flags: Optional[list] = None
+    film_analysis: Optional[dict] = None
     model_used: str = "gemini-3.5-flash"
     created_at: datetime
+
+    class Config:
+        from_attributes = True
