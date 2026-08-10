@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Position threshold matrix (the hard-coded eval logic tables)
 -- Heights stored in inches, speeds in seconds for range math.
 -- ------------------------------------------------------------
-CREATE TABLE position_thresholds (
+CREATE TABLE IF NOT EXISTS position_thresholds (
     id              SERIAL PRIMARY KEY,
     position        VARCHAR(4)  NOT NULL,          -- QB, RB, WR, DB, LB, DE, DL, OL, TE
     tier            VARCHAR(16) NOT NULL,          -- D1_FBS, D1_FCS, D2, D3, NAIA, JUCO
@@ -32,7 +32,7 @@ CREATE TABLE position_thresholds (
 -- ------------------------------------------------------------
 -- Athletes
 -- ------------------------------------------------------------
-CREATE TABLE athletes (
+CREATE TABLE IF NOT EXISTS athletes (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     first_name      VARCHAR(64) NOT NULL,
     last_name       VARCHAR(64) NOT NULL,
@@ -53,13 +53,13 @@ CREATE TABLE athletes (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_athletes_position ON athletes (position);
-CREATE INDEX idx_athletes_grad_year ON athletes (grad_year);
+CREATE INDEX IF NOT EXISTS idx_athletes_position ON athletes (position);
+CREATE INDEX IF NOT EXISTS idx_athletes_grad_year ON athletes (grad_year);
 
 -- ------------------------------------------------------------
 -- Film uploads (Module 1)
 -- ------------------------------------------------------------
-CREATE TABLE film_uploads (
+CREATE TABLE IF NOT EXISTS film_uploads (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     athlete_id      UUID REFERENCES athletes(id) ON DELETE CASCADE,
     filename        VARCHAR(255) NOT NULL,
@@ -71,12 +71,12 @@ CREATE TABLE film_uploads (
     uploaded_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_film_athlete ON film_uploads (athlete_id);
+CREATE INDEX IF NOT EXISTS idx_film_athlete ON film_uploads (athlete_id);
 
 -- ------------------------------------------------------------
 -- Evaluations / Truth Reports (Modules 2–4)
 -- ------------------------------------------------------------
-CREATE TABLE evaluations (
+CREATE TABLE IF NOT EXISTS evaluations (
     id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     athlete_id            UUID NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
     film_id               UUID REFERENCES film_uploads(id) ON DELETE SET NULL,
@@ -98,8 +98,8 @@ CREATE TABLE evaluations (
     created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_eval_athlete ON evaluations (athlete_id);
-CREATE INDEX idx_eval_game_changer ON evaluations (is_game_changer) WHERE is_game_changer;
+CREATE INDEX IF NOT EXISTS idx_eval_athlete ON evaluations (athlete_id);
+CREATE INDEX IF NOT EXISTS idx_eval_game_changer ON evaluations (is_game_changer) WHERE is_game_changer;
 
 -- ------------------------------------------------------------
 -- Module 6: Profile & Makeup grade-down reference (not a table —
@@ -165,4 +165,5 @@ VALUES
 ('DL','D1_FCS', 74.0, 77.0, 240, 300, 4.90, 5.20, NULL, NULL, NULL, NULL, NULL, NULL,
  'Interpolated from DE step-down; source page cut off before this tier'),
 ('DL','D2_D3_NAIA_JUCO', 72.0, 76.0, 230, 280, 5.00, 5.30, NULL, NULL, NULL, NULL, NULL, NULL,
- 'Interpolated from DE step-down; source page cut off before this tier');
+ 'Interpolated from DE step-down; source page cut off before this tier')
+ON CONFLICT (position, tier) DO NOTHING;

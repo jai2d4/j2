@@ -1,0 +1,44 @@
+# Render Blueprint — one-click deploy.
+# In the Render dashboard: New > Blueprint > point at this repo. Render reads
+# this file, provisions the web service + a free Postgres database, and wires
+# them together automatically. You only have to type in your Gemini key.
+databases:
+  - name: tru-scouting-db
+    plan: free
+    databaseName: tru_scouting
+    user: tru_admin
+
+services:
+  - type: web
+    name: tru-scouting-engine
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false           # paste your key in the Render dashboard after deploy
+      - key: API_KEY
+        sync: false           # optional shared secret — set it to lock the app down; leave blank for open access
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: tru-scouting-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: tru-scouting-db
+          property: port
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: tru-scouting-db
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: tru-scouting-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: tru-scouting-db
+          property: password
+      - key: APP_ENV
+        value: production

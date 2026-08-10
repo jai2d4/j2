@@ -7,9 +7,12 @@
 tru-scouting-engine/
 ├── .env.example              # env mapping (copy to .env)
 ├── requirements.txt
+├── Dockerfile                # container build for deployment (Render/Railway/Fly/anywhere)
+├── render.yaml                # Render Blueprint — one-click web service + free Postgres
 ├── db/
-│   └── init_schema.sql       # Module 5 — PostgreSQL schema + seeded position matrix
-├── scripts/                  # (migrations / batch jobs)
+│   └── init_schema.sql       # Module 5 — PostgreSQL schema + seeded position matrix (idempotent)
+├── scripts/
+│   └── init_db.py            # applies init_schema.sql on container boot — safe to re-run
 ├── tests/                    # pytest suite (mocked Gemini + DB; no live services needed)
 └── app/
     ├── main.py               # Modules 1, 4 & 6 — Gemini ingestion + Truth Report + Makeup Grade routes
@@ -38,6 +41,21 @@ uvicorn app.main:app --reload
 ```
 
 The app still runs with a cold or unreachable database — `metric-sieve`, `makeup-grade`, and `analyze-film` never touch Postgres. `truth-report` best-effort saves its result and degrades to `"persisted": false` rather than failing if the DB is down. The athlete/evaluation CRUD routes do require the database and return `503` if it's unreachable.
+
+## Deploy it (get a real public URL)
+This ships with a [Render](https://render.com) Blueprint (`render.yaml` + `Dockerfile`) — Render's free tier needs no credit card.
+
+1. Push this repo to your own GitHub account (fork it, or just use this one if you own it).
+2. In the [Render dashboard](https://dashboard.render.com/blueprints), click **New > Blueprint** and point it at the repo. Render reads `render.yaml` and provisions:
+   - a free PostgreSQL database, schema-migrated automatically on first boot (`scripts/init_db.py` runs before `uvicorn` starts — safe to re-run on every restart)
+   - a free web service running the app via `Dockerfile`, wired to that database
+3. Render will prompt for one value it can't infer: **`GEMINI_API_KEY`** — paste your Gemini key.
+4. Optionally set **`API_KEY`** too, to lock the app behind a shared secret before sharing the URL (see Auth below). Leave it blank to keep the app open.
+5. Deploy. Render gives you a `https://tru-scouting-engine-xxxx.onrender.com` URL — that's the whole app, live, no local setup required.
+
+The free tier spins down after 15 minutes idle and takes ~30–60s to wake back up on the next request — normal for free hosting, not a bug. Upgrading the web service's plan in Render removes that.
+
+No Render account yet? Sign up is free at [render.com](https://render.com) — that account (and clicking through the Blueprint prompts above) is the one step that has to happen on your end; nothing about it requires code changes.
 
 ## Auth
 Leave `API_KEY` unset in `.env` for local dev — every route is open. Set it before exposing the app anywhere else: every `/api/v1/scout/*`, `/api/v1/athletes`, and `/api/v1/evaluations` route then requires a matching `X-API-Key` header. `/api/v1/health` always stays open for uptime checks.
