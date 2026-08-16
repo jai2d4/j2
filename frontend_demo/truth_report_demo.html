@@ -72,6 +72,11 @@
   .field .fbody label{margin:0 0 2px}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .row2 .field{margin:0}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .row3 .field{margin:0}
+  @media(max-width:520px){.row3{grid-template-columns:1fr}}
+  .subdivider{font-family:'Barlow Condensed';font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--dim);margin:18px 0 4px;padding-top:14px;border-top:1px solid var(--line)}
   .presets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
   .chip{background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:100px;
     padding:6px 13px;font-size:12px;cursor:pointer;font-family:'Inter';transition:border-color .15s,color .15s}
@@ -164,6 +169,34 @@
   .stat-tile.gc .stat-val{color:var(--gold-1)}
   .stat-tile.nge{border-color:var(--fail);box-shadow:0 0 0 1px var(--fail) inset}
   .stat-tile.nge .stat-val{color:var(--fail)}
+  .hero-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .hero-head-left{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono';font-size:11px;
+    letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+  .hero-dot{width:7px;height:7px;border-radius:50%;background:var(--blue);box-shadow:0 0 8px var(--blue-glow);
+    display:inline-block;flex:0 0 auto}
+  .hero-tg{font-family:'Barlow Condensed';font-weight:800;font-size:17px;letter-spacing:.02em;
+    background:linear-gradient(180deg,var(--chrome-1),var(--chrome-2) 55%,var(--chrome-3));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero-preview{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;min-height:420px;
+    background:
+      radial-gradient(circle at 30% 20%,rgba(47,125,255,.14),transparent 55%),
+      radial-gradient(circle at 80% 75%,rgba(47,125,255,.10),transparent 50%),
+      repeating-linear-gradient(0deg,rgba(120,160,255,.05) 0px,rgba(120,160,255,.05) 1px,transparent 1px,transparent 28px),
+      repeating-linear-gradient(90deg,rgba(120,160,255,.05) 0px,rgba(120,160,255,.05) 1px,transparent 1px,transparent 28px),
+      var(--panel2);
+    display:flex;flex-direction:column;justify-content:space-between;padding:18px}
+  .hero-note{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;
+    color:var(--dim);font-size:11px;line-height:1.6;padding:20px}
+  .hero-panel{align-self:flex-end;background:rgba(10,14,20,.6);border:1px solid var(--line);border-radius:8px;
+    padding:12px 14px;max-width:230px}
+  .hero-tracking{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono';font-size:10px;
+    letter-spacing:.08em;color:var(--blue-2);text-transform:uppercase;margin-bottom:10px}
+  .hero-stats{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+  .hero-stats div{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);
+    letter-spacing:.04em;text-transform:uppercase}
+  .hero-stats .ic{color:var(--blue-2)}
+  .hero-bars{display:flex;align-items:flex-end;gap:4px;height:40px}
+  .hero-bars span{width:6px;background:linear-gradient(180deg,var(--blue-2),var(--blue));border-radius:2px;opacity:.85}
   .stat-label{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
   .stat-val{font-family:'IBM Plex Mono';font-weight:600;font-size:13px}
   .gc{margin-top:16px;border:1px solid var(--amber);border-left:5px solid var(--amber);border-radius:6px;
@@ -232,13 +265,12 @@
 </div>
 
 <div class="page-head">
-  <h1>SCOUT <span class="accent">ATHLETE</span></h1>
-  <p>Build the athlete profile — TruGrade's AI does the rest.</p>
+  <h1>CREATE <span class="accent">PROFILE</span></h1>
+  <p>Build your athlete profile. Our AI will do the rest.</p>
 </div>
 
 <div class="wrap">
   <div class="card">
-    <h2><svg class="ic"><use href="#ic-helmet"/></svg>Create <span class="accent">Profile</span></h2>
     <div class="photo-slot" id="photoSlot" onclick="document.getElementById('photopick').click()">
       <div class="photo-slot-icon"><svg class="ic" style="width:18px;height:18px"><use href="#ic-user"/></svg></div>
       <div class="photo-slot-label">Upload profile photo</div>
@@ -247,41 +279,55 @@
     </div>
     <input id="photopick" type="file" accept="image/*" style="display:none" onchange="handlePhoto(this.files[0])">
 
-    <div class="presets">
-      <button class="chip" onclick="loadPreset('fbs')">FBS-ready DB</button>
-      <button class="chip" onclick="loadPreset('burner')">Undersized burner</button>
-      <button class="chip" onclick="loadPreset('rb')">Bubble RB</button>
+    <div class="field">
+      <svg class="ic"><use href="#ic-user"/></svg>
+      <div class="fbody"><label>Athlete Name</label><input id="athleteName" type="text" placeholder="Jordan Williams"></div>
+    </div>
+    <div class="row3">
+      <div class="field"><svg class="ic"><use href="#ic-helmet"/></svg>
+        <div class="fbody"><label>Position</label>
+          <select id="position">
+            <option>QB</option><option>RB</option><option>WR</option><option selected>DB</option>
+            <option>LB</option><option>DE</option><option>DL</option><option>OL</option><option>TE</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><svg class="ic"><use href="#ic-book"/></svg><div class="fbody"><label>Class Year</label><input id="classYear" type="number" placeholder="2027"></div></div>
+      <div class="field"><svg class="ic"><use href="#ic-flag"/></svg><div class="fbody"><label>State</label><input id="stateInput" type="text" maxlength="2" placeholder="TX"></div></div>
     </div>
     <div class="field">
-      <svg class="ic"><use href="#ic-helmet"/></svg>
-      <div class="fbody"><label>Position</label>
-        <select id="position">
-          <option>QB</option><option>RB</option><option>WR</option><option selected>DB</option>
-          <option>LB</option><option>DE</option><option>DL</option><option>OL</option><option>TE</option>
-        </select>
-      </div>
+      <svg class="ic"><use href="#ic-shield"/></svg>
+      <div class="fbody"><label>School</label><input id="school" type="text" placeholder="Westview High School"></div>
     </div>
     <div class="row2">
       <div class="field"><svg class="ic"><use href="#ic-ruler"/></svg><div class="fbody"><label>Height (in)</label><input id="height" type="number" step="0.5" placeholder="72"></div></div>
       <div class="field"><svg class="ic"><use href="#ic-scale"/></svg><div class="fbody"><label>Weight (lbs)</label><input id="weight" type="number" placeholder="190"></div></div>
     </div>
-    <div class="row2">
-      <div class="field"><svg class="ic"><use href="#ic-clock"/></svg><div class="fbody"><label>40-yd (laser)</label><input id="forty" type="number" step="0.01" placeholder="4.45"></div></div>
-      <div class="field"><svg class="ic"><use href="#ic-clock"/></svg><div class="fbody"><label>Pro-agility (laser)</label><input id="shuttle" type="number" step="0.01" placeholder="4.15"></div></div>
+    <div class="field">
+      <svg class="ic"><use href="#ic-book"/></svg>
+      <div class="fbody"><label>GPA</label><input id="gpa" type="number" step="0.01" placeholder="3.2"></div>
+    </div>
+    <div class="row3">
+      <div class="field"><svg class="ic"><use href="#ic-clock"/></svg><div class="fbody"><label>40 Yard (laser)</label><input id="forty" type="number" step="0.01" placeholder="4.45"></div></div>
+      <div class="field"><svg class="ic"><use href="#ic-bolt"/></svg><div class="fbody"><label>Vertical (in)</label><input id="vertical" type="number" step="0.5" placeholder="—"></div></div>
+      <div class="field"><svg class="ic"><use href="#ic-clock"/></svg><div class="fbody"><label>Shuttle (laser)</label><input id="shuttle" type="number" step="0.01" placeholder="4.15"></div></div>
+    </div>
+    <button class="run" onclick="run()">Continue <svg class="ic"><use href="#ic-chevron"/></svg></button>
+
+    <div class="subdivider">Additional combine data — used by the sieve</div>
+    <div class="presets">
+      <button class="chip" onclick="loadPreset('fbs')">FBS-ready DB</button>
+      <button class="chip" onclick="loadPreset('burner')">Undersized burner</button>
+      <button class="chip" onclick="loadPreset('rb')">Bubble RB</button>
     </div>
     <div class="row2">
       <div class="field"><svg class="ic"><use href="#ic-dumbbell"/></svg><div class="fbody"><label>Bench (lbs)</label><input id="bench" type="number" placeholder="—"></div></div>
       <div class="field"><svg class="ic"><use href="#ic-dumbbell"/></svg><div class="fbody"><label>Squat (lbs)</label><input id="squat" type="number" placeholder="—"></div></div>
     </div>
     <div class="row2">
-      <div class="field"><svg class="ic"><use href="#ic-book"/></svg><div class="fbody"><label>GPA</label><input id="gpa" type="number" step="0.01" placeholder="3.2"></div></div>
       <div class="field"><svg class="ic"><use href="#ic-book"/></svg><div class="fbody"><label>SAT</label><input id="sat" type="number" placeholder="1050"></div></div>
-    </div>
-    <div class="row2">
       <div class="field"><svg class="ic"><use href="#ic-book"/></svg><div class="fbody"><label>ACT</label><input id="act" type="number" placeholder="18"></div></div>
-      <div></div>
     </div>
-    <button class="run" onclick="run()">Run Metric Sieve <svg class="ic"><use href="#ic-chevron"/></svg></button>
 
     <h2 style="margin-top:24px"><svg class="ic"><use href="#ic-shield"/></svg>Profile &amp; <span class="accent">Makeup</span> — Module 6</h2>
     <div class="row2">
@@ -344,8 +390,27 @@
   </div>
 
   <div class="card" id="report">
-    <h2><svg class="ic"><use href="#ic-shield"/></svg>AI Truth <span class="accent">Report</span></h2>
-    <div class="empty">Load a preset or enter combine numbers, then run the sieve.</div>
+    <div class="hero-head">
+      <div class="hero-head-left"><span class="hero-dot"></span>LIVE FILM / PROFILE PREVIEW</div>
+      <span class="hero-tg">TG</span>
+    </div>
+    <div class="hero-preview">
+      <div class="hero-note">Load a preset or enter combine numbers, then hit Continue —<br>your Truth Report renders here.<br><br>
+        (Attach your reference photo as a file to drop it into this exact panel.)</div>
+      <div class="hero-panel">
+        <div class="hero-tracking"><span class="hero-dot"></span>AI Tracking Active</div>
+        <div class="hero-stats">
+          <div><svg class="ic sm"><use href="#ic-bolt"/></svg>Motion Analysis</div>
+          <div><svg class="ic sm"><use href="#ic-shield"/></svg>Biomechanics</div>
+          <div><svg class="ic sm"><use href="#ic-play"/></svg>Play Recognition</div>
+        </div>
+        <div class="hero-bars">
+          <span style="height:35%"></span><span style="height:55%"></span><span style="height:40%"></span>
+          <span style="height:70%"></span><span style="height:50%"></span><span style="height:85%"></span>
+          <span style="height:60%"></span><span style="height:75%"></span>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 <div class="trust-bar">
@@ -364,7 +429,7 @@
   <div class="badges">
     <div class="badge"><svg class="ic"><use href="#ic-shield"/></svg>AI Truth Engine</div>
     <div class="badge"><svg class="ic"><use href="#ic-play"/></svg>Live Film Processing</div>
-    <div class="badge"><svg class="ic"><use href="#ic-ruler"/></svg>Hard-Metric Sieve</div>
+    <div class="badge"><svg class="ic"><use href="#ic-bolt"/></svg>Biomechanical Analysis</div>
     <div class="badge"><svg class="ic"><use href="#ic-check"/></svg>Trusted Evaluation</div>
   </div>
 </div>
