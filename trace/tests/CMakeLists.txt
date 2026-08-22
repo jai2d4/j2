@@ -9,9 +9,10 @@ include(GoogleTest)
 
 add_library(trace_test_support STATIC support/test_environment.cpp)
 target_include_directories(trace_test_support PUBLIC ${PROJECT_SOURCE_DIR})
-target_link_libraries(trace_test_support PUBLIC trace_core trace_media)
+target_link_libraries(trace_test_support PUBLIC trace_core trace_media trace_ai trace_analysis)
 target_compile_definitions(trace_test_support PUBLIC
-    TRACE_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+    TRACE_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    TRACE_TEST_MODELS_DIR="${PROJECT_SOURCE_DIR}/models")
 
 # ------------------------------------------------------------------ unit tests
 add_executable(trace_unit_tests
@@ -21,9 +22,11 @@ add_executable(trace_unit_tests
     unit/database_test.cpp
     unit/repository_test.cpp
     unit/service_test.cpp
+    unit/detection_test.cpp
 )
 target_link_libraries(trace_unit_tests PRIVATE
-    trace_test_support trace_core trace_media trace_ai GTest::gtest GTest::gtest_main)
+    trace_test_support trace_core trace_media trace_ai trace_analysis
+    GTest::gtest GTest::gtest_main)
 trace_apply_common_options(trace_unit_tests)
 gtest_discover_tests(trace_unit_tests
     DISCOVERY_TIMEOUT 60
@@ -35,6 +38,7 @@ add_executable(trace_integration_tests
     integration/persistence_test.cpp
     integration/integrity_failure_test.cpp
     integration/media_test.cpp
+    integration/detection_pipeline_test.cpp
 )
 target_link_libraries(trace_integration_tests PRIVATE
     trace_test_support trace_core trace_media trace_ai GTest::gtest GTest::gtest_main)
@@ -48,7 +52,7 @@ if(TRACE_BUILD_DESKTOP)
     set(CMAKE_AUTOMOC ON)
     add_executable(trace_acceptance_test integration/acceptance_phase0_test.cpp)
     target_link_libraries(trace_acceptance_test PRIVATE
-        trace_test_support trace_ui trace_core trace_media trace_ai
+        trace_test_support trace_ui trace_core trace_media trace_ai trace_analysis
         Qt6::Core Qt6::Gui Qt6::Widgets GTest::gtest)
     trace_apply_common_options(trace_acceptance_test)
 
@@ -58,5 +62,29 @@ if(TRACE_BUILD_DESKTOP)
     set_tests_properties(trace_acceptance_phase0 PROPERTIES
         LABELS acceptance
         TIMEOUT 600
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Widget-level unit tests: overlay geometry and the no-modification rule.
+    add_executable(trace_ui_unit_tests unit/overlay_test.cpp)
+    target_link_libraries(trace_ui_unit_tests PRIVATE
+        trace_ui trace_core Qt6::Core Qt6::Gui Qt6::Widgets GTest::gtest)
+    trace_apply_common_options(trace_ui_unit_tests)
+    # The binary selects the offscreen platform for itself when none is set, so
+    # both discovery and execution work on a machine with no display.
+    gtest_discover_tests(trace_ui_unit_tests
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES LABELS unit)
+
+    # Phase 1: object detection driven through the same real window.
+    add_executable(trace_acceptance_phase1_test integration/acceptance_phase1_test.cpp)
+    target_link_libraries(trace_acceptance_phase1_test PRIVATE
+        trace_test_support trace_ui trace_core trace_media trace_ai trace_analysis
+        Qt6::Core Qt6::Gui Qt6::Widgets GTest::gtest)
+    trace_apply_common_options(trace_acceptance_phase1_test)
+
+    add_test(NAME trace_acceptance_phase1 COMMAND trace_acceptance_phase1_test)
+    set_tests_properties(trace_acceptance_phase1 PROPERTIES
+        LABELS acceptance
+        TIMEOUT 1800
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

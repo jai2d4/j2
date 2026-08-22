@@ -36,6 +36,17 @@ enum class AuditAction {
     DerivedAssetCreated,
     ExportCreated,
     SettingsChanged,
+    // Phase 1 — analysis
+    AnalysisStarted,
+    AnalysisCompleted,
+    AnalysisCancelled,
+    AnalysisFailed,
+    AnalysisResultsExported,
+    DetectionConfirmed,
+    DetectionRejected,
+    DetectionMarkedUncertain,
+    ModelLoaded,
+    ModelValidationFailed,
     Unknown,
 };
 

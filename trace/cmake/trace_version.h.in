@@ -9,7 +9,7 @@ inline constexpr int kVersionMajor = @PROJECT_VERSION_MAJOR@;
 inline constexpr int kVersionMinor = @PROJECT_VERSION_MINOR@;
 inline constexpr int kVersionPatch = @PROJECT_VERSION_PATCH@;
 inline constexpr const char* kOrganizationName = "TRACE";
-inline constexpr const char* kPhase = "Phase 0";
+inline constexpr const char* kPhase = "Phase 1";
 
 /// Identifier recorded in provenance/audit rows so that every derived asset can
 /// name the exact software build that produced it.

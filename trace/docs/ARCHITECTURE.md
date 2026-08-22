@@ -14,15 +14,18 @@ boundaries encode, and where new work belongs.
               ┌───────────▼───────────┐
               │         ui/           │  Qt widgets only
               │  ApplicationContext   │  the single seam between UI and domain
-              └─┬─────────┬─────────┬─┘
-                │         │         │
-      ┌─────────▼──┐  ┌───▼─────┐  ┌▼──────────┐
-      │   core/    │  │ media/  │  │    ai/    │
-      │ no Qt      │  │ FFmpeg  │  │ interfaces│
-      │ no FFmpeg  │  │ no Qt   │  │ only      │
-      └────────────┘  └────┬────┘  └─────┬─────┘
-                           │             │
-                           └─────► core ◄┘
+              └───┬───────┬───────┬───────┬───┘
+                  │       │       │       │
+      ┌───────────▼──┐ ┌──▼────┐ ┌▼─────┐ ┌▼───────────┐
+      │    core/     │ │media/ │ │ ai/  │ │  analysis/ │
+      │ no Qt        │ │FFmpeg │ │models│ │  pipeline  │
+      │ no FFmpeg    │ │no Qt  │ │no Qt │ │ no Qt/SQL  │
+      └──────────────┘ └───────┘ └──────┘ └────────────┘
+             ▲             │        │            │
+             │             │        │            │
+             └─────────────┴────────┴────────────┘
+              media, ai and analysis all depend on core;
+              analysis additionally depends on media and ai
 ```
 
 Rules the build enforces:
@@ -35,7 +38,18 @@ Rules the build enforces:
 - **`ui` contains no SQL, no hashing and no decoding.** Widgets call services through
   `ApplicationContext`. If a widget needs to compute something about evidence, that
   computation belongs in a service.
-- **`ai` contains interfaces and a registry. No inference, no vendor.**
+- **`ai` names no vendor above its `providers/` directory.** `IDetectionProvider`, the
+  registry, the model catalogue and the pre/post-processing maths are runtime-neutral;
+  the only file that includes an ONNX Runtime header is
+  `ai/detection/providers/onnx_detection_provider.cpp`.
+- **`analysis` contains no Qt and no SQL.** It joins the three layers below it — media
+  decodes, ai detects, core persists and audits — so the whole detection path is
+  testable headlessly.
+
+The detection seam is `IDetectionProvider` (`ai/detection/detection_provider.h`): the
+pipeline declares what it needs — one decoded frame in, observations in source-frame
+normalised coordinates out — and a provider supplies it. Adding a runtime is adding a
+class; see [AI_ARCHITECTURE.md](AI_ARCHITECTURE.md).
 
 The seam between the media layer and the domain is `IMetadataExtractor`
 (`core/services/metadata_extractor.h`): the domain declares what it needs, and

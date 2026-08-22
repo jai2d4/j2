@@ -5,6 +5,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -26,6 +27,18 @@ QToolButton* makeTransportButton(QWidget* parent, const QString& text, const QSt
     button->setAutoRaise(true);
     button->setMinimumWidth(46);
     button->setMinimumHeight(28);
+    button->setEnabled(false);
+    return button;
+}
+
+QToolButton* makeOverlayToggle(QWidget* parent, const QString& text, const QString& tooltip) {
+    auto* button = new QToolButton(parent);
+    button->setText(text);
+    button->setToolTip(tooltip);
+    button->setCheckable(true);
+    button->setChecked(true);
+    button->setAutoRaise(true);
+    button->setMinimumHeight(24);
     button->setEnabled(false);
     return button;
 }
@@ -168,6 +181,27 @@ ViewerPanel::ViewerPanel(ApplicationContext* context, QWidget* parent)
         QStringLiteral("color: %1; font-size: 11px; letter-spacing: 1px;")
             .arg(colors::kTextSecondary.name()));
     actionLayout->addWidget(stateLabel_);
+
+    actionLayout->addSpacing(16);
+    showDetectionsButton_ = makeOverlayToggle(
+        actions, QStringLiteral("Show AI detections"),
+        QStringLiteral("Draw the stored detection boxes over the frame. The overlay is drawn on "
+                       "screen only — the evidence file is never altered."));
+    showLabelsButton_ = makeOverlayToggle(actions, QStringLiteral("Labels"),
+                                          QStringLiteral("Show the detected class name"));
+    showConfidenceButton_ =
+        makeOverlayToggle(actions, QStringLiteral("Confidence"),
+                          QStringLiteral("Show the model's confidence score for each box"));
+    actionLayout->addWidget(showDetectionsButton_);
+    actionLayout->addWidget(showLabelsButton_);
+    actionLayout->addWidget(showConfidenceButton_);
+
+    overlaySummaryLabel_ = new QLabel(QString(), actions);
+    overlaySummaryLabel_->setStyleSheet(
+        QStringLiteral("color: %1; font-size: 11px;").arg(colors::kTextSecondary.name()));
+    actionLayout->addSpacing(10);
+    actionLayout->addWidget(overlaySummaryLabel_);
+
     actionLayout->addStretch();
 
     frameExportButton_ = new QPushButton(QStringLiteral("Save current frame"), actions);
@@ -204,6 +238,12 @@ ViewerPanel::ViewerPanel(ApplicationContext* context, QWidget* parent)
     connect(frameExportButton_, &QPushButton::clicked, this,
             [this] { emit frameExportRequested(); });
     connect(bookmarkButton_, &QPushButton::clicked, this, [this] { emit bookmarkRequested(); });
+
+    for (auto* toggle : {showDetectionsButton_, showLabelsButton_, showConfidenceButton_}) {
+        connect(toggle, &QToolButton::toggled, this, [this] { pushOverlayOptions(); });
+    }
+    connect(view_, &VideoView::detectionClicked, this,
+            [this](const QString& id) { emit detectionActivated(id); });
 }
 
 ViewerPanel::~ViewerPanel() {
@@ -219,6 +259,7 @@ void ViewerPanel::applyControlsEnabled(bool enabled) {
     speedBox_->setEnabled(enabled);
     frameExportButton_->setEnabled(enabled);
     bookmarkButton_->setEnabled(enabled);
+    if (!enabled) setDetectionOverlayAvailable(false);
 }
 
 void ViewerPanel::openEvidence(const Evidence& evidence) {
@@ -261,6 +302,81 @@ void ViewerPanel::openEvidence(const Evidence& evidence) {
             break;
         }
     }
+}
+
+void ViewerPanel::setDetections(std::vector<DetectionOverlayItem> detections,
+                                qint64 analysedFrameUs) {
+    overlayFrameUs_ = analysedFrameUs;
+    view_->setDetections(detections);
+    if (fullScreenView_ != nullptr) fullScreenView_->setDetections(detections);
+    updateOverlaySummary();
+}
+
+void ViewerPanel::clearDetections() {
+    overlayFrameUs_ = -1;
+    view_->clearDetections();
+    if (fullScreenView_ != nullptr) fullScreenView_->clearDetections();
+    updateOverlaySummary();
+}
+
+void ViewerPanel::setSelectedDetection(const QString& detectionId) {
+    view_->setSelectedDetection(detectionId);
+    if (fullScreenView_ != nullptr) fullScreenView_->setSelectedDetection(detectionId);
+}
+
+void ViewerPanel::setOverlayOptions(const DetectionOverlayOptions& options) {
+    overlayOptions_ = options;
+    const QSignalBlocker blockBoxes(showDetectionsButton_);
+    const QSignalBlocker blockLabels(showLabelsButton_);
+    const QSignalBlocker blockConfidence(showConfidenceButton_);
+    showDetectionsButton_->setChecked(options.showBoxes);
+    showLabelsButton_->setChecked(options.showLabels);
+    showConfidenceButton_->setChecked(options.showConfidence);
+    showLabelsButton_->setEnabled(overlayAvailable_ && options.showBoxes);
+    showConfidenceButton_->setEnabled(overlayAvailable_ && options.showBoxes);
+
+    view_->setOverlayOptions(options);
+    if (fullScreenView_ != nullptr) fullScreenView_->setOverlayOptions(options);
+    updateOverlaySummary();
+}
+
+void ViewerPanel::setDetectionOverlayAvailable(bool available) {
+    overlayAvailable_ = available;
+    showDetectionsButton_->setEnabled(available);
+    showLabelsButton_->setEnabled(available && overlayOptions_.showBoxes);
+    showConfidenceButton_->setEnabled(available && overlayOptions_.showBoxes);
+    if (!available) clearDetections();
+    updateOverlaySummary();
+}
+
+void ViewerPanel::pushOverlayOptions() {
+    DetectionOverlayOptions options;
+    options.showBoxes = showDetectionsButton_->isChecked();
+    options.showLabels = showLabelsButton_->isChecked();
+    options.showConfidence = showConfidenceButton_->isChecked();
+    setOverlayOptions(options);
+    emit overlayOptionsChanged(options);
+}
+
+void ViewerPanel::updateOverlaySummary() {
+    if (!overlayAvailable_) {
+        overlaySummaryLabel_->setText(QString());
+        return;
+    }
+    if (!overlayOptions_.showBoxes) {
+        overlaySummaryLabel_->setText(QStringLiteral("Overlay hidden"));
+        return;
+    }
+    const auto count = view_->detections().size();
+    if (count == 0) {
+        overlaySummaryLabel_->setText(QStringLiteral("No detections near this position"));
+        return;
+    }
+    overlaySummaryLabel_->setText(QStringLiteral("%1 detection%2 · analysed frame %3")
+                                      .arg(count)
+                                      .arg(count == 1 ? QString() : QStringLiteral("s"),
+                                           overlayFrameUs_ >= 0 ? timecode(overlayFrameUs_)
+                                                                : kNotAvailable));
 }
 
 void ViewerPanel::closeMedia() {
@@ -361,6 +477,10 @@ void ViewerPanel::enterFullScreen() {
     fullScreenWindow_ = window;
     fullScreenView_ = window->view;
     fullScreenView_->setFrame(view_->frame());
+    fullScreenView_->setOverlayOptions(overlayOptions_);
+    fullScreenView_->setDetections(view_->detections());
+    connect(fullScreenView_, &VideoView::detectionClicked, this,
+            [this](const QString& id) { emit detectionActivated(id); });
     connect(window, &QObject::destroyed, this, [this] {
         fullScreenWindow_ = nullptr;
         fullScreenView_ = nullptr;

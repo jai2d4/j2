@@ -7,10 +7,13 @@
 #include <memory>
 #include <optional>
 
+#include "ai/detection/models/model_manager.h"
+#include "analysis/analysis_pipeline.h"
 #include "core/common/result.h"
 #include "core/database/database.h"
 #include "core/models/case.h"
 #include "core/models/evidence.h"
+#include "core/services/analysis_service.h"
 #include "core/services/annotation_service.h"
 #include "core/services/audit_service.h"
 #include "core/services/case_service.h"
@@ -50,8 +53,16 @@ public:
     AnnotationService& annotations() const { return *annotationService_; }
     DerivedAssetService& derivedAssets() const { return *derivedAssetService_; }
     FrameExportService& frameExports() const { return *frameExportService_; }
+    AnalysisService& analysis() const { return *analysisService_; }
+    std::shared_ptr<AnalysisService> analysisService() const { return analysisService_; }
+    ModelManager& models() const { return *modelManager_; }
     AuditService& audit() const { return *auditService_; }
     SettingsService& settings() const { return *settingsService_; }
+
+    /// A pipeline instance for one run. Cheap to build and safe to hand to a
+    /// worker thread: it borrows the service by shared pointer and copies the
+    /// model directory and storage layout.
+    AnalysisPipeline makeAnalysisPipeline() const;
 
     const std::optional<Case>& currentCase() const { return currentCase_; }
     const std::optional<Evidence>& currentEvidence() const { return currentEvidence_; }
@@ -73,6 +84,8 @@ public:
     void notifyDerivedAssetsChanged();
     void notifyAuditChanged();
     void notifyCasesChanged();
+    void notifyAnalysisRunsChanged();
+    void notifyDetectionsChanged();
 
 signals:
     void casesChanged();
@@ -85,6 +98,8 @@ signals:
     void annotationsChanged();
     void derivedAssetsChanged();
     void auditChanged();
+    void analysisRunsChanged();
+    void detectionsChanged();
     void statusMessage(const QString& message, int timeoutMs);
 
 private:
@@ -98,6 +113,8 @@ private:
     std::unique_ptr<AnnotationService> annotationService_;
     std::shared_ptr<DerivedAssetService> derivedAssetService_;
     std::unique_ptr<FrameExportService> frameExportService_;
+    std::shared_ptr<AnalysisService> analysisService_;
+    std::unique_ptr<ModelManager> modelManager_;
     std::unique_ptr<SettingsService> settingsService_;
 
     std::optional<Case> currentCase_;

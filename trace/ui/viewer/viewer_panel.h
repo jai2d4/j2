@@ -4,8 +4,10 @@
 
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "core/models/evidence.h"
+#include "ui/common/detection_overlay.h"
 #include "ui/viewer/playback_bridge.h"
 
 class QComboBox;
@@ -49,18 +51,42 @@ public:
     void seek(qint64 positionUs);
     void enterFullScreen();
 
+    /// Detections drawn over the frame currently on screen. Display only — the
+    /// decoded image and the stored evidence are never touched.
+    ///
+    /// `analysedFrameUs` is the timestamp of the analysed frame the boxes belong
+    /// to, which is rarely exactly the playhead; it is shown to the operator so
+    /// nothing pretends the boxes were measured on the frame being displayed.
+    void setDetections(std::vector<DetectionOverlayItem> detections,
+                       qint64 analysedFrameUs = -1);
+    void clearDetections();
+    void setSelectedDetection(const QString& detectionId);
+    const DetectionOverlayOptions& overlayOptions() const { return overlayOptions_; }
+    void setOverlayOptions(const DetectionOverlayOptions& options);
+    /// Enables the overlay switches. They stay off while an item has no
+    /// analysis results, so nothing offers to show what does not exist.
+    void setDetectionOverlayAvailable(bool available);
+    bool detectionOverlayAvailable() const { return overlayAvailable_; }
+
+    VideoView* videoView() const { return view_; }
+
 signals:
     void positionChanged(qint64 positionUs);
     void durationChanged(qint64 durationUs);
     void bookmarkRequested();
     void annotationRequested();
     void frameExportRequested();
+    /// A box on the frame was clicked; empty means the click missed every box.
+    void detectionActivated(const QString& detectionId);
+    void overlayOptionsChanged(const DetectionOverlayOptions& options);
 
 private:
     void onFrame(const QImage& image, qint64 positionUs, qint64 frameNumber, bool keyFrame);
     void onStateChanged(int state, const QString& message);
     void updateTimeLabels(qint64 positionUs, qint64 frameNumber);
     void applyControlsEnabled(bool enabled);
+    void pushOverlayOptions();
+    void updateOverlaySummary();
 
     ApplicationContext* context_ = nullptr;
     std::unique_ptr<PlaybackBridge> playback_;
@@ -86,6 +112,14 @@ private:
     QToolButton* muteButton_ = nullptr;
     QPushButton* frameExportButton_ = nullptr;
     QPushButton* bookmarkButton_ = nullptr;
+    QToolButton* showDetectionsButton_ = nullptr;
+    QToolButton* showLabelsButton_ = nullptr;
+    QToolButton* showConfidenceButton_ = nullptr;
+    QLabel* overlaySummaryLabel_ = nullptr;
+
+    DetectionOverlayOptions overlayOptions_;
+    bool overlayAvailable_ = false;
+    qint64 overlayFrameUs_ = -1;
 
     qint64 jumpMicroseconds_ = 5'000'000;
 };

@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(TRACE
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "TRACE — video evidence intelligence platform"
     LANGUAGES CXX)
 
@@ -23,6 +23,13 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 option(TRACE_BUILD_DESKTOP "Build the Qt desktop application" ON)
 option(TRACE_BUILD_TESTS   "Build the automated test suites"   ON)
 option(TRACE_WITH_OPENCV   "Enable optional OpenCV-backed helpers" OFF)
+
+# Local AI inference (Phase 1). Optional so the evidence foundation still builds
+# on a machine with no runtime installed; when off, only the deterministic mock
+# detection provider is registered.
+option(TRACE_WITH_ONNXRUNTIME "Build the local ONNX Runtime detection provider" ON)
+set(TRACE_ONNXRUNTIME_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime"
+    CACHE PATH "Root of an ONNX Runtime distribution (include/ and lib/)")
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/TraceWarnings.cmake)
 
@@ -57,6 +64,7 @@ target_include_directories(trace_version INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/g
 add_subdirectory(core)
 add_subdirectory(media)
 add_subdirectory(ai)
+add_subdirectory(analysis)
 
 if(TRACE_BUILD_DESKTOP)
     add_subdirectory(ui)
@@ -79,4 +87,8 @@ if(TRACE_BUILD_DESKTOP)
     message(STATUS "  Qt ................. ${Qt6_VERSION}")
 endif()
 message(STATUS "  OpenCV helpers ..... ${TRACE_WITH_OPENCV}")
+message(STATUS "  ONNX Runtime ....... ${TRACE_WITH_ONNXRUNTIME}")
+if(TRACE_WITH_ONNXRUNTIME)
+    message(STATUS "    root ............. ${TRACE_ONNXRUNTIME_ROOT}")
+endif()
 message(STATUS "")

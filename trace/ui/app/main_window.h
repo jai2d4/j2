@@ -14,12 +14,15 @@ class QTabWidget;
 
 namespace trace::ui {
 
+class AnalysisPanel;
 class AnnotationsPanel;
 class ApplicationContext;
 class AuditPanel;
 class BackgroundTask;
 class BookmarksPanel;
 class CaseBrowserPanel;
+class DetectionInspector;
+class DetectionsPanel;
 class EvidencePanel;
 class InspectorPanel;
 class TimelineWidget;
@@ -31,10 +34,11 @@ class ViewerPanel;
 ///   │ TRACE                                                   │
 ///   ├──────────────┬──────────────────────────────┬───────────┤
 ///   │ EVIDENCE     │                              │ INSPECTOR │
-///   │ BOOKMARKS    │        VIDEO VIEWER          │ metadata  │
-///   │ NOTES        │                              │ hash      │
+///   │ BOOKMARKS    │   VIDEO VIEWER + AI OVERLAY  │ AI RUN    │
+///   │ NOTES        │                              │ DETECTION │
+///   │ DETECTIONS   │                              │           │
 ///   ├──────────────┴──────────────────────────────┴───────────┤
-///   │                     TIMELINE                            │
+///   │        TIMELINE — bookmarks, notes, detection lanes     │
 ///   └─────────────────────────────────────────────────────────┘
 ///
 /// The window owns no domain logic: it routes user intent to services through
@@ -60,6 +64,14 @@ public:
     AnnotationsPanel* annotationsPanel() const { return annotations_; }
     TimelineWidget* timeline() const { return timeline_; }
     AuditPanel* auditPanel() const { return audit_; }
+    AnalysisPanel* analysisPanel() const { return analysis_; }
+    DetectionsPanel* detectionsPanel() const { return detections_; }
+    DetectionInspector* detectionInspector() const { return detectionInspector_; }
+
+    /// Brings the AI analysis panel forward and starts a run — the Analyze
+    /// Video action, also used by the acceptance test.
+    void analyzeCurrentEvidence();
+    void showDetections();
 
     void openEvidenceInViewer(const Evidence& evidence);
     void addBookmarkAtPlayhead();
@@ -76,6 +88,8 @@ private:
     void buildCentralWidgets();
     void connectSignals();
     void refreshTimelineTracks();
+    void updateDetectionOverlay();
+    void showDetectionInInspector(const QString& detectionId);
     void updateWindowState();
     void updateStatusForEvidence();
     void showAbout();
@@ -89,8 +103,12 @@ private:
     EvidencePanel* evidencePanel_ = nullptr;
     BookmarksPanel* bookmarks_ = nullptr;
     AnnotationsPanel* annotations_ = nullptr;
+    DetectionsPanel* detections_ = nullptr;
     ViewerPanel* viewer_ = nullptr;
+    QTabWidget* rightTabs_ = nullptr;
     InspectorPanel* inspector_ = nullptr;
+    AnalysisPanel* analysis_ = nullptr;
+    DetectionInspector* detectionInspector_ = nullptr;
     TimelineWidget* timeline_ = nullptr;
     AuditPanel* audit_ = nullptr;
 
@@ -105,6 +123,8 @@ private:
     QAction* bookmarkAction_ = nullptr;
     QAction* annotationAction_ = nullptr;
     QAction* editCaseAction_ = nullptr;
+    QAction* analyzeAction_ = nullptr;
+    QAction* cancelAnalysisAction_ = nullptr;
     QAction* casesAction_ = nullptr;
     QAction* viewerAction_ = nullptr;
     QAction* auditAction_ = nullptr;

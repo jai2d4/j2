@@ -28,6 +28,8 @@ The connection is serialised behind a recursive mutex. `Transaction` scopes nest
 | `derived_assets` | Outputs, with digests | `evidence_id` CASCADE, `operation_id` SET NULL |
 | `bookmarks` | Marked moments | `evidence_id`, CASCADE |
 | `annotations` | Timestamp and range notes | `evidence_id`, CASCADE |
+| `analysis_runs` | One execution of an analysis over one item | `case_id`, `evidence_id`, CASCADE |
+| `detections` | What a model reported, one row per object per analysed frame | `analysis_run_id`, `case_id`, `evidence_id`, CASCADE |
 | `audit_events` | Append-only history | **no foreign keys — deliberately** |
 | `application_settings` | Key/value settings | — |
 | `users` | Local accounts (scaffolding) | — |
@@ -53,12 +55,37 @@ A defect in a future UI cannot rewrite history, and `AuditRepository` exposes no
 or delete to begin with. `sequence` is a monotonic counter so records keep their order
 even when two share a millisecond.
 
+### Why detections are relational rows
+
+A detection could have been a JSON blob on the run. It is not, because an hour of
+footage produces hundreds of thousands of them and every question an analyst asks is a
+query: *by time* (what is on screen now), *by class or group* (show me the vehicles),
+*by confidence* (hide anything under 60%), *by review state* (what have I not looked at).
+
+Provenance is reached by joining the run rather than repeated on each row, so hundreds of
+thousands of detections cannot disagree about which model produced them. See
+[ANALYSIS_RUNS.md](ANALYSIS_RUNS.md).
+
+Bounding boxes are stored **normalised to the source frame** (`bbox_x/y/w/h`, 0–1) with
+pixel values alongside as a convenience. Normalised geometry stays correct when the item
+is drawn at another size, which pixel coordinates do not.
+
+`analysis_runs.sampling_interval_us` is a column rather than a field inside
+`configuration_json` because the viewer needs it to decide which analysed frame belongs
+to the playhead. Inferring that from the spacing of the detections would put boxes on the
+wrong moment wherever a stretch of footage contained nothing.
+
 ## Indexes
 
 Case listing and search (`status`, `modified_at`), evidence by case and by digest
 (duplicate detection), bookmarks and annotations by `(evidence_id, position)` for
 timeline rendering, derived assets by evidence and type, and audit by sequence, case,
 evidence and action.
+
+Detections carry six: `(evidence_id, timestamp_us)` for the overlay and the timeline,
+`(analysis_run_id)`, `(case_id)`, `(evidence_id, class_group)`, `(evidence_id,
+verification_state)` and `(evidence_id, confidence)` for the filters. Analysis runs carry
+four: by case, by evidence (newest first), by status and by creation time.
 
 ## Migrations
 
