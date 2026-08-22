@@ -11,6 +11,7 @@ add_library(trace_ui STATIC
     common/background_task.cpp
     common/ingest_dialog.cpp
     common/settings_dialog.cpp
+    common/detection_overlay.cpp
 
     app/application_context.cpp
     app/main_window.cpp
@@ -23,6 +24,9 @@ add_library(trace_ui STATIC
     viewer/viewer_panel.cpp
     timeline/timeline_widget.cpp
     inspector/inspector_panel.cpp
+    analysis/analysis_panel.cpp
+    analysis/detections_panel.cpp
+    analysis/detection_inspector.cpp
     annotations/bookmark_dialog.cpp
     annotations/annotation_dialog.cpp
     annotations/bookmarks_panel.cpp
@@ -37,6 +41,7 @@ target_link_libraries(trace_ui PUBLIC
     trace_core
     trace_media
     trace_ai
+    trace_analysis
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets

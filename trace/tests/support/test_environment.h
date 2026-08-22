@@ -2,9 +2,11 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "core/database/database.h"
+#include "core/services/analysis_service.h"
 #include "core/services/annotation_service.h"
 #include "core/services/audit_service.h"
 #include "core/services/case_service.h"
@@ -35,6 +37,17 @@ private:
 /// destructive: the fixture itself is treated as read-only.
 std::filesystem::path sampleVideoPath();
 
+/// Directory holding detection model artefacts for development runs.
+std::filesystem::path modelsDirectory();
+
+/// A clip containing people and vehicles, used by the tests that exercise real
+/// inference. It is fetched by scripts/fetch_test_media.sh rather than
+/// committed, so it may be absent — those tests skip themselves and say so.
+std::optional<std::filesystem::path> pedestrianVideoPath();
+
+/// True when the YOLOX-Tiny artefact is installed and passes validation.
+bool realDetectionModelAvailable();
+
 /// A fully wired stack over a temporary data directory: database, migrations,
 /// storage layout and every service, including the real FFmpeg extractor.
 struct TestStack {
@@ -46,6 +59,7 @@ struct TestStack {
     std::unique_ptr<IntegrityService> integrity;
     std::unique_ptr<AnnotationService> annotations;
     std::shared_ptr<DerivedAssetService> derivedAssets;
+    std::shared_ptr<AnalysisService> analysis;
 
     static TestStack create(const std::filesystem::path& dataRoot, bool withMediaExtractor = true);
 };

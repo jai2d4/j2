@@ -45,6 +45,7 @@ public:
 
     qint64 duration() const { return durationUs_; }
     qint64 position() const { return positionUs_; }
+    const std::vector<TimelineTrack>& tracks() const { return tracks_; }
 
     void zoomIn();
     void zoomOut();

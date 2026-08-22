@@ -1,5 +1,6 @@
 #include "ui/app/application_context.h"
 
+#include "ai/detection/detection_provider_registry.h"
 #include "core/common/logging.h"
 #include "core/common/uuid.h"
 #include "core/database/migrations.h"
@@ -44,7 +45,13 @@ Status ApplicationContext::initialise(const std::filesystem::path& dataRoot) {
     annotationService_ = std::make_unique<AnnotationService>(database_, auditService_);
     derivedAssetService_ = std::make_shared<DerivedAssetService>(database_, *layout_, auditService_);
     frameExportService_ = std::make_unique<FrameExportService>(*layout_, derivedAssetService_);
+    analysisService_ = std::make_shared<AnalysisService>(database_, auditService_);
+    modelManager_ = std::make_unique<ModelManager>(ModelManager::defaultModelDirectory(dataRoot));
     settingsService_ = std::make_unique<SettingsService>(database_, auditService_);
+
+    // Providers announce themselves once per process. Listing them loads no
+    // model and acquires no device — that happens when a run starts.
+    registerBuiltinDetectionProviders();
 
     if (auto status = settingsService_->ensureDefaults(); !status) return status;
     Logger::instance().setLevel(settingsService_->logLevel());
@@ -99,6 +106,8 @@ void ApplicationContext::shutdown() {
 
     frameExportService_.reset();
     settingsService_.reset();
+    modelManager_.reset();
+    analysisService_.reset();
     derivedAssetService_.reset();
     annotationService_.reset();
     integrityService_.reset();
@@ -107,6 +116,10 @@ void ApplicationContext::shutdown() {
     auditService_.reset();
     database_.reset();
     Logger::instance().shutdown();
+}
+
+AnalysisPipeline ApplicationContext::makeAnalysisPipeline() const {
+    return AnalysisPipeline(analysisService_, *modelManager_, *layout_);
 }
 
 QString ApplicationContext::currentCaseNumber() const {
@@ -175,6 +188,12 @@ void ApplicationContext::notifyAuditChanged() {
 }
 void ApplicationContext::notifyCasesChanged() {
     if (initialised_) emit casesChanged();
+}
+void ApplicationContext::notifyAnalysisRunsChanged() {
+    if (initialised_) emit analysisRunsChanged();
+}
+void ApplicationContext::notifyDetectionsChanged() {
+    if (initialised_) emit detectionsChanged();
 }
 
 }  // namespace trace::ui

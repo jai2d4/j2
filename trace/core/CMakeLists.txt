@@ -43,6 +43,7 @@ add_library(trace_core STATIC
     repositories/annotation_repository.cpp
     repositories/audit_repository.cpp
     repositories/provenance_repository.cpp
+    repositories/analysis_repository.cpp
     repositories/settings_repository.cpp
     repositories/user_repository.cpp
 
@@ -55,6 +56,7 @@ add_library(trace_core STATIC
     services/integrity_service.cpp
     services/annotation_service.cpp
     services/derived_asset_service.cpp
+    services/analysis_service.cpp
 
     settings/settings_service.cpp
     settings/system_capabilities.cpp

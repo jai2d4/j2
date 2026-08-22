@@ -1,16 +1,19 @@
-# TRACE — Phase 0
+# TRACE — Phase 1
 
 **TRACE** is a video evidence intelligence platform for investigators, analysts and
-authorised agencies. This repository contains **Phase 0**: the evidence foundation that
-every later analysis module plugs into.
+authorised agencies. This repository contains **Phase 0** — the evidence foundation — and
+**Phase 1**, its first genuine computer-vision capability: object detection.
 
-Phase 0 is a working desktop application, not a prototype. It ingests evidence into
-managed storage, hashes it, extracts real technical metadata, plays it back with
-frame-accurate control, records bookmarks and notes, exports frames as derived assets
-with full provenance, and keeps an append-only audit trail of everything that happened.
+It is a working desktop application, not a prototype. It ingests evidence into managed
+storage, hashes it, extracts real technical metadata, plays it back with frame-accurate
+control, records bookmarks and notes, exports frames as derived assets with full
+provenance, runs a real detection model over a recording and lets an analyst review
+every result — and keeps an append-only audit trail of all of it.
 
-**Phase 0 performs no AI analysis and makes no forensic determinations.** It ships the
-provider interface for later phases and nothing else. Conclusions remain the analyst's.
+**TRACE reports observations and makes no forensic determinations.** Object detection
+states a visual class and the model's confidence in it. It does not identify individuals,
+read number plates, track anyone, or say what was happening. Conclusions remain the
+analyst's.
 
 ---
 
@@ -34,9 +37,18 @@ provider interface for later phases and nothing else. Conclusions remain the ana
 | Append-only audit trail, enforced by database triggers | Working |
 | Versioned schema migrations with drift detection | Working |
 | Settings, with capability detection | Working |
+| **Object detection** over a recording, with a real model | Working |
+| Provider and model selection; model SHA-256 verified before the run | Working |
+| Detection overlay on the video, with label/confidence switches | Working |
+| Timeline lanes for People, Vehicles and Objects | Working |
+| Detections table with class, group, confidence and review filters; click to jump | Working |
+| Detection inspector: class, confidence, timestamp, box, evidence, model, digest, device, run | Working |
+| Human verification — confirmed / rejected / uncertain, audited, never destructive | Working |
+| Cancel a running analysis; partial results kept and the run recorded as cancelled | Working |
 | **Audio playback** | **Not implemented** — controls are visibly disabled; audio stream metadata *is* extracted and shown |
-| **Hardware-accelerated decode** | **Not implemented** — setting exists and is disabled; Phase 0 decodes in software |
-| **Any AI/analysis module** | **Not implemented by design** — see `ai/interfaces` and `docs/ROADMAP.md` |
+| **Hardware-accelerated decode** | **Not implemented** — setting exists and is disabled; TRACE decodes in software |
+| **GPU inference (CUDA)** | **Written and guarded, never executed here** — this environment has no GPU; see `docs/PHASE1_TESTING.md` |
+| **Face recognition, identity, plates, tracking, re-identification** | **Not implemented, by design** — see `docs/ROADMAP.md` |
 
 Anything not listed as working is either absent or shown disabled with the reason.
 There are no placeholder screens and no simulated results.
@@ -61,20 +73,27 @@ trace/
     ffmpeg/            Metadata probe, decoder (accurate seek, frame stepping)
     playback/          Threaded playback engine driven by presentation timestamps
     thumbnails/        PNG writer, frame export and preview services
-  ai/interfaces/       IAnalysisProvider, request/result types, provider registry
+  ai/                  Model-facing code, no Qt
+    interfaces/        IAnalysisProvider, request/result types, provider registry
+    detection/         IDetectionProvider, model catalogue, letterbox, NMS, providers
+  analysis/            Detection pipeline: sampling, threading, batching. No Qt, no SQL
   ui/                  Qt widgets only; all domain work goes through ApplicationContext
+    analysis/          Analysis panel, detections table, detection inspector
   migrations/          Versioned schema (*.sql), embedded into the binary
+  models/              Detection artefacts (git-ignored, fetched by script)
+  third_party/         ONNX Runtime (git-ignored, fetched by script)
   tests/               unit/, integration/, fixtures/, support/
-  docs/                Architecture, evidence model, provenance, database, roadmap
-  scripts/             Migration embedding, sample media generation
+  docs/                Architecture, evidence model, provenance, database, AI, roadmap
+  scripts/             Migration embedding, sample media, runtime/model/media fetchers
 ```
 
 The dependency direction is strict and enforced by the build:
 
 ```
-apps/desktop → ui → { core, media, ai }
-                       media → core
-                       ai    → core
+apps/desktop → ui → { core, media, ai, analysis }
+                       analysis → { core, media, ai }
+                       media    → core
+                       ai       → core
 ```
 
 `core` and `media` contain no Qt and are exercised headlessly by the test suites.
@@ -93,6 +112,7 @@ apps/desktop → ui → { core, media, ai }
 | FFmpeg | 6.1.1 — libavformat 60.16.100, libavcodec 60.31.102, libavutil 58.29.100, libswscale 7.5.100, libswresample 4.12.100 | Decoding, probing and PNG encoding |
 | SQLite | 3.45.1 | System library |
 | GoogleTest | system package | Tests only |
+| ONNX Runtime | 1.17.3 (CPU package) | Optional but needed for real detection; fetched by `scripts/fetch_onnxruntime.sh`, not vendored |
 | OpenCV | optional, off by default | `-DTRACE_WITH_OPENCV=ON` reserved for later image work |
 
 ### Linux / macOS
@@ -104,11 +124,20 @@ sudo apt-get install -y build-essential cmake ninja-build \
     libavformat-dev libavcodec-dev libavutil-dev libswscale-dev libswresample-dev \
     libsqlite3-dev libgtest-dev libgmock-dev
 
-cmake -S trace -B trace/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+# Optional, and needed for real detection: the runtime and a model.
+./trace/scripts/fetch_onnxruntime.sh          # add --gpu for the CUDA package
+./trace/scripts/fetch_models.sh               # YOLOX-Tiny, SHA-256 verified
+
+cmake -S trace -B trace/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DTRACE_WITH_ONNXRUNTIME=ON \
+      -DTRACE_ONNXRUNTIME_ROOT=trace/third_party/onnxruntime
 cmake --build trace/build -j"$(nproc)"
 ctest --test-dir trace/build --output-on-failure
 ./trace/build/bin/trace
 ```
+
+Without ONNX Runtime the application still builds and runs: only the deterministic mock
+provider is offered, and the analysis panel says so.
 
 ### Windows 11
 
@@ -121,6 +150,8 @@ including the exact triplet and the DLL deployment step.
 |---|---|---|
 | `TRACE_BUILD_DESKTOP` | `ON` | Build the Qt application; `OFF` builds only the headless libraries |
 | `TRACE_BUILD_TESTS` | `ON` | Build the three test suites |
+| `TRACE_WITH_ONNXRUNTIME` | `OFF` | Build the ONNX Runtime detection provider |
+| `TRACE_ONNXRUNTIME_ROOT` | — | Where the runtime package was unpacked |
 | `TRACE_WITH_OPENCV` | `OFF` | Link optional OpenCV helpers |
 
 ---
@@ -144,6 +175,10 @@ Default data directories:
 The data directory holds `trace.db`, the application log and one folder per case
 (`originals/`, `working/`, `thumbnails/`, `exports/`, `reports/`, `logs/`).
 
+Detection models are looked for in `<data root>/models`, overridable with
+`TRACE_MODEL_DIR`. **TRACE never downloads a model.** A model that is not installed is
+reported as missing, with the path it was expected at and the script that fetches it.
+
 ---
 
 ## The rule that governs everything
@@ -161,6 +196,13 @@ and operator.
 A failed integrity check never overwrites the recorded digest. It is reported, persisted
 as a failed status, and written to the audit trail for a human to interpret.
 
+Analysis does not change this. A detection run **reads** the managed original and writes
+rows to `analysis_runs` and `detections`; it never re-encodes the video, never burns boxes
+into it, and never touches the evidence's recorded SHA-256. The overlay is drawn onto the
+widget, not into the frame — there is a unit test that compares the decoded frame's bytes
+before and after the boxes are drawn. The acceptance tests hash the managed original after
+every run and require it to be identical.
+
 ---
 
 ## Tests
@@ -169,22 +211,35 @@ as a failed status, and written to the audit trail for a human to interpret.
 ctest --test-dir trace/build --output-on-failure
 ```
 
-80 test cases in three suites:
+124 test cases in five suites:
 
-- **`trace_unit_tests`** (55) — SHA-256 against published NIST vectors, identifier and
+- **`trace_unit_tests`** (81) — SHA-256 against published NIST vectors, identifier and
   timecode handling, JSON escaping, managed storage paths, migrations and drift
   detection, the append-only audit guarantee, repository round-trips, service
-  validation and the analysis registry.
-- **`trace_integration_tests`** (24) — ingestion against the real sample file,
+  validation, and the Phase 1 detection maths: the letterbox transform and its inverse,
+  class-aware NMS, the YOLOX grid decode against a hand-computed tensor, the model
+  catalogue, timestamp-driven sampling and the run-status rules.
+- **`trace_ui_unit_tests`** (6) — overlay geometry under letterboxing, hit-testing,
+  colour semantics, and a byte-level check that drawing boxes leaves the decoded frame
+  untouched.
+- **`trace_integration_tests`** (35) — ingestion against the real sample file,
   persistence across a restart, integrity failure detection, decoding, accurate seeking,
-  frame stepping, playback control, frame export and preview generation.
-- **`trace_acceptance_test`** (1) — the §37 workflow driven through the real
-  application: create a case, import, play, seek, step, bookmark, close, reopen, verify
-  integrity, read the audit trail. Runs headless (`QT_QPA_PLATFORM=offscreen`); set
-  `TRACE_SCREENSHOT_DIR` to capture screenshots of each stage.
+  frame stepping, playback, frame export, and the whole detection pipeline including
+  real inference against real footage.
+- **`trace_acceptance_test`** (1) — the Phase 0 §37 workflow driven through the real
+  application. Set `TRACE_SCREENSHOT_DIR` to capture screenshots of each stage.
+- **`trace_acceptance_phase1_test`** (1) — the Phase 1 workflows through the real window:
+  a successful analysis with review and restart, a failed analysis, and a cancelled one.
+
+Both GUI suites run headless (`QT_QPA_PLATFORM=offscreen`).
 
 The sample clip in `tests/fixtures/sample.mp4` is generated from FFmpeg's synthetic
-sources by `scripts/make_sample_video.sh` — no third-party footage is bundled.
+sources by `scripts/make_sample_video.sh` — no third-party footage is bundled. Tests that
+need a real model or real street footage fetch them by script and **skip themselves,
+saying why, when they are absent**.
+
+See **[docs/PHASE1_TESTING.md](docs/PHASE1_TESTING.md)** for what was measured and, just
+as importantly, what was not.
 
 ---
 
@@ -197,7 +252,12 @@ sources by `scripts/make_sample_video.sh` — no third-party footage is bundled.
 | [docs/PROVENANCE.md](docs/PROVENANCE.md) | The chain every derived result must satisfy |
 | [docs/DATABASE.md](docs/DATABASE.md) | Schema, keys, cascade policy, migrations |
 | [docs/BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md) | Windows 11 build with vcpkg |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | What Phase 1+ adds and the extension points waiting for it |
+| [docs/AI_ARCHITECTURE.md](docs/AI_ARCHITECTURE.md) | How analysis plugs in, the provider interface, threading, what analysis may touch |
+| [docs/DETECTION_MODEL.md](docs/DETECTION_MODEL.md) | The model, preprocessing, output decode, class grouping, measured performance |
+| [docs/ANALYSIS_RUNS.md](docs/ANALYSIS_RUNS.md) | The run record, its statuses, and the rules that keep it honest |
+| [docs/MODEL_PROVENANCE.md](docs/MODEL_PROVENANCE.md) | The chain from a box on screen to the bytes of the model that drew it |
+| [docs/PHASE1_TESTING.md](docs/PHASE1_TESTING.md) | Phase 1 coverage, the defects it caught, and what was not tested |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | What Phase 2+ adds and the extension points waiting for it |
 
 ---
 

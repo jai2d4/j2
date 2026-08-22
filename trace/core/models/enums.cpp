@@ -1,9 +1,13 @@
 // String conversions for the domain enums. The persisted forms are stable:
 // changing one is a schema-visible change and needs a migration.
+#include <algorithm>
+
 #include "core/models/annotation.h"
 #include "core/models/audit_event.h"
 #include "core/models/case.h"
+#include "core/models/analysis_run.h"
 #include "core/models/derived_asset.h"
+#include "core/models/detection.h"
 #include "core/models/evidence.h"
 #include "core/models/media_metadata.h"
 
@@ -360,6 +364,16 @@ const char* toString(AuditAction action) {
         case AuditAction::DerivedAssetCreated:       return "derived_asset.created";
         case AuditAction::ExportCreated:             return "export.created";
         case AuditAction::SettingsChanged:           return "settings.changed";
+        case AuditAction::AnalysisStarted:           return "analysis.started";
+        case AuditAction::AnalysisCompleted:         return "analysis.completed";
+        case AuditAction::AnalysisCancelled:         return "analysis.cancelled";
+        case AuditAction::AnalysisFailed:            return "analysis.failed";
+        case AuditAction::AnalysisResultsExported:   return "analysis.results_exported";
+        case AuditAction::DetectionConfirmed:        return "detection.confirmed";
+        case AuditAction::DetectionRejected:         return "detection.rejected";
+        case AuditAction::DetectionMarkedUncertain:  return "detection.marked_uncertain";
+        case AuditAction::ModelLoaded:               return "model.loaded";
+        case AuditAction::ModelValidationFailed:     return "model.validation_failed";
         case AuditAction::Unknown:                   return "unknown";
     }
     return "unknown";
@@ -393,6 +407,16 @@ const char* toDisplayString(AuditAction action) {
         case AuditAction::DerivedAssetCreated:       return "Derived asset created";
         case AuditAction::ExportCreated:             return "Export created";
         case AuditAction::SettingsChanged:           return "Settings changed";
+        case AuditAction::AnalysisStarted:           return "Analysis started";
+        case AuditAction::AnalysisCompleted:         return "Analysis completed";
+        case AuditAction::AnalysisCancelled:         return "Analysis cancelled";
+        case AuditAction::AnalysisFailed:            return "Analysis failed";
+        case AuditAction::AnalysisResultsExported:   return "Analysis results exported";
+        case AuditAction::DetectionConfirmed:        return "Detection confirmed by analyst";
+        case AuditAction::DetectionRejected:         return "Detection rejected by analyst";
+        case AuditAction::DetectionMarkedUncertain:  return "Detection marked uncertain";
+        case AuditAction::ModelLoaded:               return "Model loaded";
+        case AuditAction::ModelValidationFailed:     return "Model validation failed";
         case AuditAction::Unknown:                   return "Unknown action";
     }
     return "Unknown action";
@@ -426,11 +450,153 @@ AuditAction auditActionFromString(const std::string& text) {
         {"derived_asset.created", AuditAction::DerivedAssetCreated},
         {"export.created", AuditAction::ExportCreated},
         {"settings.changed", AuditAction::SettingsChanged},
+        {"analysis.started", AuditAction::AnalysisStarted},
+        {"analysis.completed", AuditAction::AnalysisCompleted},
+        {"analysis.cancelled", AuditAction::AnalysisCancelled},
+        {"analysis.failed", AuditAction::AnalysisFailed},
+        {"analysis.results_exported", AuditAction::AnalysisResultsExported},
+        {"detection.confirmed", AuditAction::DetectionConfirmed},
+        {"detection.rejected", AuditAction::DetectionRejected},
+        {"detection.marked_uncertain", AuditAction::DetectionMarkedUncertain},
+        {"model.loaded", AuditAction::ModelLoaded},
+        {"model.validation_failed", AuditAction::ModelValidationFailed},
     };
     for (const auto& entry : kMap) {
         if (text == entry.text) return entry.action;
     }
     return AuditAction::Unknown;
+}
+
+// ------------------------------------------------------------ AnalysisRunStatus
+
+const char* toString(AnalysisRunStatus status) {
+    switch (status) {
+        case AnalysisRunStatus::Queued:    return "queued";
+        case AnalysisRunStatus::Running:   return "running";
+        case AnalysisRunStatus::Paused:    return "paused";
+        case AnalysisRunStatus::Completed: return "completed";
+        case AnalysisRunStatus::Cancelled: return "cancelled";
+        case AnalysisRunStatus::Failed:    return "failed";
+        case AnalysisRunStatus::Partial:   return "partial";
+    }
+    return "queued";
+}
+
+const char* toDisplayString(AnalysisRunStatus status) {
+    switch (status) {
+        case AnalysisRunStatus::Queued:    return "QUEUED";
+        case AnalysisRunStatus::Running:   return "RUNNING";
+        case AnalysisRunStatus::Paused:    return "PAUSED";
+        case AnalysisRunStatus::Completed: return "COMPLETED";
+        case AnalysisRunStatus::Cancelled: return "CANCELLED";
+        case AnalysisRunStatus::Failed:    return "FAILED";
+        case AnalysisRunStatus::Partial:   return "PARTIAL";
+    }
+    return "QUEUED";
+}
+
+AnalysisRunStatus analysisRunStatusFromString(const std::string& text, AnalysisRunStatus fallback) {
+    if (text == "queued") return AnalysisRunStatus::Queued;
+    if (text == "running") return AnalysisRunStatus::Running;
+    if (text == "paused") return AnalysisRunStatus::Paused;
+    if (text == "completed") return AnalysisRunStatus::Completed;
+    if (text == "cancelled") return AnalysisRunStatus::Cancelled;
+    if (text == "failed") return AnalysisRunStatus::Failed;
+    if (text == "partial") return AnalysisRunStatus::Partial;
+    return fallback;
+}
+
+bool isTerminal(AnalysisRunStatus status) {
+    switch (status) {
+        case AnalysisRunStatus::Completed:
+        case AnalysisRunStatus::Cancelled:
+        case AnalysisRunStatus::Failed:
+        case AnalysisRunStatus::Partial:
+            return true;
+        case AnalysisRunStatus::Queued:
+        case AnalysisRunStatus::Running:
+        case AnalysisRunStatus::Paused:
+            return false;
+    }
+    return false;
+}
+
+bool producedCompleteResults(AnalysisRunStatus status) {
+    return status == AnalysisRunStatus::Completed;
+}
+
+// --------------------------------------------------------- DetectionClassGroup
+
+const char* toString(DetectionClassGroup group) {
+    switch (group) {
+        case DetectionClassGroup::Person:  return "person";
+        case DetectionClassGroup::Vehicle: return "vehicle";
+        case DetectionClassGroup::Object:  return "object";
+    }
+    return "object";
+}
+
+const char* toDisplayString(DetectionClassGroup group) {
+    switch (group) {
+        case DetectionClassGroup::Person:  return "People";
+        case DetectionClassGroup::Vehicle: return "Vehicles";
+        case DetectionClassGroup::Object:  return "Objects";
+    }
+    return "Objects";
+}
+
+DetectionClassGroup detectionClassGroupFromString(const std::string& text,
+                                                  DetectionClassGroup fallback) {
+    if (text == "person") return DetectionClassGroup::Person;
+    if (text == "vehicle") return DetectionClassGroup::Vehicle;
+    if (text == "object") return DetectionClassGroup::Object;
+    return fallback;
+}
+
+// -------------------------------------------------------- DetectionVerification
+
+const char* toString(DetectionVerification state) {
+    switch (state) {
+        case DetectionVerification::Unreviewed: return "unreviewed";
+        case DetectionVerification::Confirmed:  return "confirmed";
+        case DetectionVerification::Rejected:   return "rejected";
+        case DetectionVerification::Uncertain:  return "uncertain";
+    }
+    return "unreviewed";
+}
+
+const char* toDisplayString(DetectionVerification state) {
+    switch (state) {
+        case DetectionVerification::Unreviewed: return "UNREVIEWED";
+        case DetectionVerification::Confirmed:  return "CONFIRMED";
+        case DetectionVerification::Rejected:   return "REJECTED";
+        case DetectionVerification::Uncertain:  return "UNCERTAIN";
+    }
+    return "UNREVIEWED";
+}
+
+DetectionVerification detectionVerificationFromString(const std::string& text,
+                                                      DetectionVerification fallback) {
+    if (text == "unreviewed") return DetectionVerification::Unreviewed;
+    if (text == "confirmed") return DetectionVerification::Confirmed;
+    if (text == "rejected") return DetectionVerification::Rejected;
+    if (text == "uncertain") return DetectionVerification::Uncertain;
+    return fallback;
+}
+
+// ---------------------------------------------------------------- NormalizedBox
+
+NormalizedBox NormalizedBox::clampedToFrame() const {
+    const double left = std::clamp(x, 0.0, 1.0);
+    const double top = std::clamp(y, 0.0, 1.0);
+    const double right = std::clamp(x + width, 0.0, 1.0);
+    const double bottom = std::clamp(y + height, 0.0, 1.0);
+    NormalizedBox clamped;
+    clamped.x = left;
+    clamped.y = top;
+    clamped.width = right > left ? right - left : 0.0;
+    clamped.height = bottom > top ? bottom - top : 0.0;
+    return clamped;
 }
 
 }  // namespace trace

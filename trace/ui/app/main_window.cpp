@@ -17,6 +17,9 @@
 
 #include "core/common/time_utils.h"
 #include "trace/trace_version.h"
+#include "ui/analysis/analysis_panel.h"
+#include "ui/analysis/detection_inspector.h"
+#include "ui/analysis/detections_panel.h"
 #include "ui/annotations/annotations_panel.h"
 #include "ui/annotations/bookmarks_panel.h"
 #include "ui/app/application_context.h"
@@ -42,11 +45,12 @@ QLabel* statusLabel(const QString& text, const QColor& colour) {
 }
 
 /// Modules that belong to later phases. They are listed so the roadmap is
-/// visible, and disabled so nothing pretends to work.
+/// visible, and disabled so nothing pretends to work. Object detection left this
+/// list in Phase 1 — it is a real menu action now, not a placeholder.
 const std::vector<QString> kFutureModules = {
-    QStringLiteral("People"),  QStringLiteral("Vehicles"), QStringLiteral("Objects"),
-    QStringLiteral("Audio"),   QStringLiteral("Scene"),    QStringLiteral("Graph"),
-    QStringLiteral("Reports"), QStringLiteral("AI analysis")};
+    QStringLiteral("Audio analysis"), QStringLiteral("Scene understanding"),
+    QStringLiteral("Entity graph"),   QStringLiteral("Reports"),
+    QStringLiteral("Multi-camera")};
 
 }  // namespace
 
@@ -94,16 +98,26 @@ void MainWindow::buildCentralWidgets() {
     evidencePanel_ = new EvidencePanel(context_, leftTabs_);
     bookmarks_ = new BookmarksPanel(context_, leftTabs_);
     annotations_ = new AnnotationsPanel(context_, leftTabs_);
+    detections_ = new DetectionsPanel(context_, leftTabs_);
     leftTabs_->addTab(evidencePanel_, QStringLiteral("Evidence"));
     leftTabs_->addTab(bookmarks_, QStringLiteral("Bookmarks"));
     leftTabs_->addTab(annotations_, QStringLiteral("Notes"));
+    leftTabs_->addTab(detections_, QStringLiteral("Detections"));
 
     viewer_ = new ViewerPanel(context_, horizontal);
-    inspector_ = new InspectorPanel(context_, horizontal);
+
+    rightTabs_ = new QTabWidget(horizontal);
+    rightTabs_->setDocumentMode(true);
+    inspector_ = new InspectorPanel(context_, rightTabs_);
+    analysis_ = new AnalysisPanel(context_, rightTabs_);
+    detectionInspector_ = new DetectionInspector(rightTabs_);
+    rightTabs_->addTab(inspector_, QStringLiteral("Evidence"));
+    rightTabs_->addTab(analysis_, QStringLiteral("AI analysis"));
+    rightTabs_->addTab(detectionInspector_, QStringLiteral("Detection"));
 
     horizontal->addWidget(leftTabs_);
     horizontal->addWidget(viewer_);
-    horizontal->addWidget(inspector_);
+    horizontal->addWidget(rightTabs_);
     horizontal->setStretchFactor(0, 0);
     horizontal->setStretchFactor(1, 1);
     horizontal->setStretchFactor(2, 0);
@@ -211,9 +225,27 @@ void MainWindow::buildMenus() {
     auto* zoomReset = viewMenu->addAction(QStringLiteral("Timeline &fit"));
     connect(zoomReset, &QAction::triggered, this, [this] { timeline_->resetZoom(); });
 
+    // ----------------------------------------------------------- AI analysis
+    auto* analysisMenu = menuBar()->addMenu(QStringLiteral("&Analysis"));
+    analyzeAction_ = analysisMenu->addAction(QStringLiteral("&Analyze video…"));
+    analyzeAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+R")));
+    analyzeAction_->setToolTip(
+        QStringLiteral("Run object detection over this item. The managed original is read, never "
+                       "written."));
+    connect(analyzeAction_, &QAction::triggered, this, &MainWindow::analyzeCurrentEvidence);
+
+    cancelAnalysisAction_ = analysisMenu->addAction(QStringLiteral("&Cancel analysis"));
+    cancelAnalysisAction_->setEnabled(false);
+    connect(cancelAnalysisAction_, &QAction::triggered, this,
+            [this] { analysis_->cancelAnalysis(); });
+
+    analysisMenu->addSeparator();
+    auto* detectionsAction = analysisMenu->addAction(QStringLiteral("&Detections list"));
+    connect(detectionsAction, &QAction::triggered, this, &MainWindow::showDetections);
+
     // -------------------------------------------------------------- modules
     auto* moduleMenu = menuBar()->addMenu(QStringLiteral("&Modules"));
-    auto* phaseNote = moduleMenu->addAction(QStringLiteral("Phase 0 — analysis modules not built"));
+    auto* phaseNote = moduleMenu->addAction(QStringLiteral("Not built yet — later phases"));
     phaseNote->setEnabled(false);
     moduleMenu->addSeparator();
     for (const auto& name : kFutureModules) {
@@ -242,6 +274,9 @@ void MainWindow::buildToolBar() {
     toolBar->addSeparator();
     toolBar->addAction(bookmarkAction_);
     toolBar->addAction(annotationAction_);
+    toolBar->addSeparator();
+    toolBar->addAction(analyzeAction_);
+    toolBar->addAction(cancelAnalysisAction_);
 }
 
 void MainWindow::buildStatusBar() {
@@ -276,6 +311,7 @@ void MainWindow::connectSignals() {
     connect(viewer_, &ViewerPanel::positionChanged, this, [this](qint64 positionUs) {
         timeline_->setPosition(positionUs);
         positionStatusLabel_->setText(timecode(positionUs));
+        updateDetectionOverlay();
     });
     connect(viewer_, &ViewerPanel::durationChanged, this, [this](qint64 durationUs) {
         timeline_->setDuration(durationUs);
@@ -296,7 +332,19 @@ void MainWindow::connectSignals() {
                 if (track == QStringLiteral("Bookmarks")) {
                     leftTabs_->setCurrentWidget(bookmarks_);
                     bookmarks_->selectBookmark(id);
+                    return;
                 }
+                // Detection lane markers carry "<group>:<start µs>": activating
+                // one moves the playhead to where that presence begins and
+                // selects the nearest detection in the list.
+                const qsizetype separator = id.lastIndexOf(QLatin1Char(':'));
+                if (separator < 0) return;
+                bool parsed = false;
+                const qint64 startUs = id.mid(separator + 1).toLongLong(&parsed);
+                if (!parsed) return;
+                viewer_->seek(startUs);
+                leftTabs_->setCurrentWidget(detections_);
+                detections_->selectNearestTo(startUs);
             });
 
     connect(bookmarks_, &BookmarksPanel::jumpRequested, this,
@@ -317,6 +365,76 @@ void MainWindow::connectSignals() {
             });
     connect(inspector_, &InspectorPanel::integrityChecked, this,
             [this](bool) { updateStatusForEvidence(); });
+
+    // --------------------------------------------------------- AI analysis
+    connect(analysis_, &AnalysisPanel::statusMessage, this,
+            [this](const QString& message, int timeout) {
+                statusBar()->showMessage(message, timeout);
+            });
+    connect(analysis_, &AnalysisPanel::analysisStarted, this, [this] {
+        cancelAnalysisAction_->setEnabled(true);
+        analyzeAction_->setEnabled(false);
+    });
+    connect(analysis_, &AnalysisPanel::progressUpdated, this,
+            [this](qint64 frames, qint64 found, double fraction) {
+                statusBar()->showMessage(QStringLiteral("Analysing — %1% · %2 frames · %3 "
+                                                        "detections")
+                                             .arg(fraction * 100.0, 0, 'f', 0)
+                                             .arg(frames)
+                                             .arg(found),
+                                         0);
+            });
+    connect(analysis_, &AnalysisPanel::analysisFinished, this,
+            [this](bool, const QString& message, int terminalStatus) {
+                cancelAnalysisAction_->setEnabled(false);
+                updateWindowState();
+                // Cancelling is a decision the operator just made — reporting it
+                // back as a problem would be noise. A failure is different, and
+                // is put in front of them.
+                const auto status = static_cast<AnalysisRunStatus>(terminalStatus);
+                if (status == AnalysisRunStatus::Failed ||
+                    status == AnalysisRunStatus::Partial) {
+                    QMessageBox::warning(this, QStringLiteral("Analysis did not complete"),
+                                         message);
+                }
+            });
+    connect(analysis_, &AnalysisPanel::resultsRunChanged, this, [this] {
+        detections_->setResultsRun(analysis_->resultsRun());
+        detectionInspector_->clear();
+        viewer_->setDetectionOverlayAvailable(analysis_->resultsRun().has_value());
+        refreshTimelineTracks();
+        updateDetectionOverlay();
+    });
+
+    connect(detections_, &DetectionsPanel::statusMessage, this,
+            [this](const QString& message, int timeout) {
+                statusBar()->showMessage(message, timeout);
+            });
+    connect(detections_, &DetectionsPanel::jumpRequested, this,
+            [this](qint64 positionUs) { viewer_->seek(positionUs); });
+    connect(detections_, &DetectionsPanel::detectionSelected, this,
+            [this](const QString& detectionId) {
+                viewer_->setSelectedDetection(detectionId);
+                showDetectionInInspector(detectionId);
+            });
+    connect(detections_, &DetectionsPanel::filtersChanged, this, [this] {
+        refreshTimelineTracks();
+        updateDetectionOverlay();
+    });
+    connect(detections_, &DetectionsPanel::verificationChanged, this, [this] {
+        refreshTimelineTracks();
+        updateDetectionOverlay();
+        showDetectionInInspector(detections_->selectedDetectionId());
+    });
+
+    connect(viewer_, &ViewerPanel::detectionActivated, this, [this](const QString& detectionId) {
+        if (detectionId.isEmpty()) return;
+        leftTabs_->setCurrentWidget(detections_);
+        detections_->selectDetection(detectionId);
+        rightTabs_->setCurrentWidget(detectionInspector_);
+    });
+    connect(viewer_, &ViewerPanel::overlayOptionsChanged, this,
+            [this](const DetectionOverlayOptions&) { updateDetectionOverlay(); });
 
     connect(context_, &ApplicationContext::currentEvidenceChanged, this,
             &MainWindow::updateStatusForEvidence);
@@ -360,6 +478,13 @@ void MainWindow::openEvidenceInViewer(const Evidence& evidence) {
     context_->evidence().recordViewed(evidence, context_->currentCaseNumber().toStdString());
     context_->notifyAuditChanged();
     timeline_->setDuration(0);
+    // The analysis panel picks the run to view and tells the detections panel,
+    // which in turn feeds the overlay and the timeline lanes.
+    analysis_->setEvidence(evidence);
+    detections_->setEvidence(evidence);
+    detections_->setResultsRun(analysis_->resultsRun());
+    detectionInspector_->clear();
+    viewer_->setDetectionOverlayAvailable(analysis_->resultsRun().has_value());
     refreshTimelineTracks();
     updateStatusForEvidence();
 
@@ -388,6 +513,8 @@ void MainWindow::openEvidenceInViewer(const Evidence& evidence) {
 }
 
 void MainWindow::refreshTimelineTracks() {
+    if (!context_->isInitialised()) return;
+
     std::vector<TimelineTrack> tracks;
 
     TimelineTrack bookmarkTrack;
@@ -417,7 +544,45 @@ void MainWindow::refreshTimelineTracks() {
     }
     tracks.push_back(std::move(annotationTrack));
 
+    // Detection lanes come last so the analyst's own marks stay at the top.
+    for (auto& lane : detections_->timelineTracks()) tracks.push_back(std::move(lane));
+
     timeline_->setTracks(std::move(tracks));
+}
+
+void MainWindow::updateDetectionOverlay() {
+    if (!context_->isInitialised()) return;
+    if (!viewer_->detectionOverlayAvailable() || !viewer_->overlayOptions().showBoxes) {
+        viewer_->setDetections({});
+        return;
+    }
+    const DetectionOverlayFrame frame = detections_->overlayAt(viewer_->position());
+    viewer_->setDetections(frame.items, frame.timestampUs);
+}
+
+void MainWindow::showDetectionInInspector(const QString& detectionId) {
+    if (detectionId.isEmpty() || !context_->isInitialised()) {
+        detectionInspector_->clear();
+        return;
+    }
+    auto found = context_->analysis().findDetection(detectionId.toStdString());
+    if (!found || !found.value().has_value()) {
+        detectionInspector_->clear();
+        return;
+    }
+    detectionInspector_->showDetection(found.value(), analysis_->resultsRun(),
+                                       context_->currentEvidence());
+}
+
+void MainWindow::analyzeCurrentEvidence() {
+    showViewer();
+    rightTabs_->setCurrentWidget(analysis_);
+    analysis_->startAnalysis();
+}
+
+void MainWindow::showDetections() {
+    showViewer();
+    leftTabs_->setCurrentWidget(detections_);
 }
 
 void MainWindow::addBookmarkAtPlayhead() {
@@ -503,6 +668,11 @@ void MainWindow::updateWindowState() {
     annotationAction_->setEnabled(hasEvidence);
     viewerAction_->setEnabled(hasCase);
 
+    const bool analysisRunning = analysis_ != nullptr && analysis_->analysisRunning();
+    const bool isVideo = hasEvidence && context_->currentEvidence()->mediaType == MediaType::Video;
+    if (analyzeAction_ != nullptr) analyzeAction_->setEnabled(isVideo && !analysisRunning);
+    if (cancelAnalysisAction_ != nullptr) cancelAnalysisAction_->setEnabled(analysisRunning);
+
     if (hasCase) {
         const Case& value = *context_->currentCase();
         caseStatusLabel_->setText(QStringLiteral("%1  ·  %2  ·  %3")
@@ -545,8 +715,12 @@ void MainWindow::showAbout() {
             "<p>Original evidence is copied into managed storage, hashed with SHA-256 and never "
             "modified. Everything produced from it is recorded as a derived asset with its own "
             "provenance, and every action is written to an append-only audit trail.</p>"
-            "<p><b>This phase does not perform any AI analysis</b> and makes no forensic "
-            "determinations. Conclusions remain the analyst's.</p>"
+            "<p>Object detection reads the managed original and stores what a model reported, "
+            "with the digest of the exact model file that produced it. Detection overlays are "
+            "drawn on screen only — the evidence file is never altered.</p>"
+            "<p><b>TRACE makes no forensic determinations.</b> It reports a visual class and a "
+            "confidence: it does not identify individuals, read number plates, or say what was "
+            "happening. Conclusions remain the analyst's.</p>"
             "<p style='color:#8d99a4'>Qt %3 · SQLite · FFmpeg</p>")
             .arg(QString::fromUtf8(kApplicationVersion), QString::fromUtf8(kPhase),
                  QString::fromUtf8(qVersion())));
@@ -554,6 +728,11 @@ void MainWindow::showAbout() {
 
 void MainWindow::closeEvent(QCloseEvent* event) {
     viewer_->closeMedia();
+
+    // An analysis in flight writes to the database, so it has to stop before the
+    // services it is writing through are released. Cancelling keeps whatever it
+    // has already stored and records the run as cancelled.
+    if (analysis_ != nullptr) analysis_->cancelAnalysis();
 
     // Stop background work and then destroy the task objects. A finished
     // signal may already be queued for delivery; deleting its sender discards

@@ -6,6 +6,7 @@
 #include "core/common/logging.h"
 #include "core/common/uuid.h"
 #include "core/database/migrations.h"
+#include "ai/detection/models/model_manager.h"
 #include "media/ffmpeg/media_probe.h"
 
 namespace trace::testing {
@@ -69,7 +70,36 @@ TestStack TestStack::create(const std::filesystem::path& dataRoot, bool withMedi
     stack.annotations = std::make_unique<AnnotationService>(stack.database, stack.audit);
     stack.derivedAssets =
         std::make_shared<DerivedAssetService>(stack.database, *stack.layout, stack.audit);
+    stack.analysis = std::make_shared<AnalysisService>(stack.database, stack.audit);
     return stack;
+}
+
+std::filesystem::path modelsDirectory() {
+#ifdef TRACE_TEST_MODELS_DIR
+    return std::filesystem::path(TRACE_TEST_MODELS_DIR);
+#else
+    return std::filesystem::path("models");
+#endif
+}
+
+std::optional<std::filesystem::path> pedestrianVideoPath() {
+#ifdef TRACE_TEST_FIXTURES_DIR
+    const std::filesystem::path candidate =
+        std::filesystem::path(TRACE_TEST_FIXTURES_DIR) / "external" / "vtest.avi";
+#else
+    const std::filesystem::path candidate = "tests/fixtures/external/vtest.avi";
+#endif
+    std::error_code ec;
+    if (std::filesystem::exists(candidate, ec)) return candidate;
+    return std::nullopt;
+}
+
+bool realDetectionModelAvailable() {
+    const auto descriptor = ModelManager::describe("yolox-tiny");
+    if (!descriptor) return false;
+    ModelManager manager(modelsDirectory());
+    auto validation = manager.validate(*descriptor);
+    return validation.ok() && validation.value().usable();
 }
 
 }  // namespace trace::testing

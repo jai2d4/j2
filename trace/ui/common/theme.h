@@ -31,6 +31,11 @@ inline const QColor kNeutralBadge{"#5c666f"};
 inline const QColor kPlayhead{"#e8eef4"};
 inline const QColor kBookmark{"#2f9bc4"};
 inline const QColor kAnnotation{"#b07fd4"};
+// Detection lanes and overlay boxes. One hue per class group, kept clear of the
+// integrity colours so a green box never reads as "verified evidence".
+inline const QColor kDetectionPerson{"#39b3d7"};
+inline const QColor kDetectionVehicle{"#e0913a"};
+inline const QColor kDetectionObject{"#8f8ad6"};
 }  // namespace colors
 
 /// Applies the palette and stylesheet to the whole application.
