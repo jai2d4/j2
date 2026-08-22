@@ -216,8 +216,7 @@ Result<AnalysisOutcome> AnalysisPipeline::execute(const DetectionAnalysisRequest
                                  outcome.run.modelVersion, outcome.run.modelSha256,
                                  outcome.deviceUsed, provider->info().runtime);
 
-    if (request.device == DevicePreference::Gpu &&
-        outcome.deviceUsed.find("CUDA") == std::string::npos) {
+    if (request.device == DevicePreference::Gpu && !provider->info().acceleratorInUse) {
         warnings.emplace_back(
             "GPU inference was requested but no GPU execution provider was available; the "
             "analysis ran on the CPU.");

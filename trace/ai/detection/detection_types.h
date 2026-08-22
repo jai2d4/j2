@@ -76,6 +76,10 @@ struct ProviderInfo {
     std::optional<std::string> modelSha256;
     std::optional<std::string> modelPath;
     std::string deviceInUse;    ///< what actually ran: "CPU", "CUDA:0", ...
+    /// True when a hardware accelerator did the work rather than the CPU. The
+    /// provider reports this because only it knows what its device string means
+    /// — nothing above this interface should be matching vendor names.
+    bool acceleratorInUse = false;
 };
 
 /// What a provider can do, so the UI offers only real options.

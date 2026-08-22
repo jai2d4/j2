@@ -176,6 +176,7 @@ Status OnnxDetectionProvider::initialise(const DetectionProviderConfig& config) 
         impl_->info.modelSha256 = config.modelSha256;
         impl_->info.modelPath = config.modelPath.string();
         impl_->info.deviceInUse = deviceInUse;
+        impl_->info.acceleratorInUse = deviceInUse != "CPU";
 
         impl_->capabilities = DetectionCapabilities{};
         impl_->capabilities.supportedClasses =
