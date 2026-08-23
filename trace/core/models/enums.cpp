@@ -8,6 +8,7 @@
 #include "core/models/analysis_run.h"
 #include "core/models/derived_asset.h"
 #include "core/models/detection.h"
+#include "core/models/report.h"
 #include "core/models/evidence.h"
 #include "core/models/media_metadata.h"
 
@@ -597,6 +598,81 @@ NormalizedBox NormalizedBox::clampedToFrame() const {
     clamped.width = right > left ? right - left : 0.0;
     clamped.height = bottom > top ? bottom - top : 0.0;
     return clamped;
+}
+
+
+// ------------------------------------------------------------------- reports
+
+const char* toString(ReportStatus status) {
+    switch (status) {
+        case ReportStatus::Draft: return "draft";
+        case ReportStatus::Exporting: return "exporting";
+        case ReportStatus::Exported: return "exported";
+        case ReportStatus::Cancelled: return "cancelled";
+        case ReportStatus::Failed: return "failed";
+    }
+    return "draft";
+}
+
+const char* toDisplayString(ReportStatus status) {
+    switch (status) {
+        case ReportStatus::Draft: return "Draft";
+        case ReportStatus::Exporting: return "Exporting";
+        case ReportStatus::Exported: return "Exported";
+        case ReportStatus::Cancelled: return "Cancelled";
+        case ReportStatus::Failed: return "Failed";
+    }
+    return "Draft";
+}
+
+ReportStatus reportStatusFromString(const std::string& text, ReportStatus fallback) {
+    if (text == "draft") return ReportStatus::Draft;
+    if (text == "exporting") return ReportStatus::Exporting;
+    if (text == "exported") return ReportStatus::Exported;
+    if (text == "cancelled") return ReportStatus::Cancelled;
+    if (text == "failed") return ReportStatus::Failed;
+    return fallback;
+}
+
+bool isTerminal(ReportStatus status) {
+    return status == ReportStatus::Exported || status == ReportStatus::Cancelled ||
+           status == ReportStatus::Failed;
+}
+
+bool producedCompleteBundle(ReportStatus status) { return status == ReportStatus::Exported; }
+
+const char* toString(ReportItemType type) {
+    switch (type) {
+        case ReportItemType::Evidence: return "evidence";
+        case ReportItemType::Detection: return "detection";
+        case ReportItemType::Frame: return "frame";
+        case ReportItemType::Clip: return "clip";
+        case ReportItemType::Bookmark: return "bookmark";
+        case ReportItemType::Annotation: return "annotation";
+    }
+    return "evidence";
+}
+
+const char* toDisplayString(ReportItemType type) {
+    switch (type) {
+        case ReportItemType::Evidence: return "Evidence";
+        case ReportItemType::Detection: return "Detection";
+        case ReportItemType::Frame: return "Frame";
+        case ReportItemType::Clip: return "Clip";
+        case ReportItemType::Bookmark: return "Bookmark";
+        case ReportItemType::Annotation: return "Note";
+    }
+    return "Evidence";
+}
+
+ReportItemType reportItemTypeFromString(const std::string& text, ReportItemType fallback) {
+    if (text == "evidence") return ReportItemType::Evidence;
+    if (text == "detection") return ReportItemType::Detection;
+    if (text == "frame") return ReportItemType::Frame;
+    if (text == "clip") return ReportItemType::Clip;
+    if (text == "bookmark") return ReportItemType::Bookmark;
+    if (text == "annotation") return ReportItemType::Annotation;
+    return fallback;
 }
 
 }  // namespace trace
