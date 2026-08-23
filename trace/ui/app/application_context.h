@@ -9,6 +9,7 @@
 
 #include "ai/detection/models/model_manager.h"
 #include "analysis/analysis_pipeline.h"
+#include "reporting/report_service.h"
 #include "core/common/result.h"
 #include "core/database/database.h"
 #include "core/models/case.h"
@@ -54,6 +55,7 @@ public:
     DerivedAssetService& derivedAssets() const { return *derivedAssetService_; }
     FrameExportService& frameExports() const { return *frameExportService_; }
     AnalysisService& analysis() const { return *analysisService_; }
+    ReportService& reports() const { return *reportService_; }
     std::shared_ptr<AnalysisService> analysisService() const { return analysisService_; }
     ModelManager& models() const { return *modelManager_; }
     AuditService& audit() const { return *auditService_; }
@@ -86,6 +88,7 @@ public:
     void notifyCasesChanged();
     void notifyAnalysisRunsChanged();
     void notifyDetectionsChanged();
+    void notifyReportsChanged();
 
 signals:
     void casesChanged();
@@ -100,6 +103,7 @@ signals:
     void auditChanged();
     void analysisRunsChanged();
     void detectionsChanged();
+    void reportsChanged();
     void statusMessage(const QString& message, int timeoutMs);
 
 private:
@@ -115,6 +119,7 @@ private:
     std::unique_ptr<FrameExportService> frameExportService_;
     std::shared_ptr<AnalysisService> analysisService_;
     std::unique_ptr<ModelManager> modelManager_;
+    std::unique_ptr<ReportService> reportService_;
     std::unique_ptr<SettingsService> settingsService_;
 
     std::optional<Case> currentCase_;

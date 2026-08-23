@@ -58,6 +58,10 @@ public:
     Result<ManifestEntry> addExhibit(const std::filesystem::path& source, const std::string& name);
     /// Writes a text document at `relativePath`, creating parents as needed.
     Result<ManifestEntry> addTextFile(const std::string& relativePath, const std::string& contents);
+    /// Records a file a caller wrote into the bundle itself — used where producing the
+    /// file needs a facility this module does not have, such as a text engine for PDF.
+    /// The file must already exist inside the bundle root.
+    Result<ManifestEntry> addProducedFile(const std::string& relativePath);
 
     /// Writes MANIFEST.checksums, MANIFEST.json and MANIFEST.sha256 over everything
     /// written so far, and returns the digest of MANIFEST.json.

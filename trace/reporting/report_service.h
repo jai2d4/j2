@@ -79,6 +79,19 @@ struct ExportOutcome {
     std::optional<std::string> error;
 };
 
+/// Turns the rendered report into a paginated document.
+///
+/// Supplied by the Qt layer, because laying out HTML for print needs a text engine that
+/// core and this module deliberately do not link. When no renderer is supplied the
+/// bundle simply has no PDF — it does not have an empty one, and nothing claims
+/// otherwise.
+class IDocumentRenderer {
+public:
+    virtual ~IDocumentRenderer() = default;
+    virtual Status renderPdf(const std::string& html,
+                             const std::filesystem::path& destination) = 0;
+};
+
 /// Builds exhibit bundles from a selection, and re-verifies them.
 ///
 /// The service decides what goes in and records what happened; BundleWriter writes
@@ -91,6 +104,11 @@ public:
                   EvidenceService& evidence, AnalysisService& analysis,
                   AnnotationService& annotations,
                   std::shared_ptr<DerivedAssetService> derivedAssets);
+
+    /// Installs the optional PDF renderer. Without one, bundles carry HTML only.
+    void setDocumentRenderer(std::shared_ptr<IDocumentRenderer> renderer) {
+        documents_ = std::move(renderer);
+    }
 
     /// Records the selection as a draft. Nothing is written to disk yet.
     Result<Report> createReport(const ReportDraft& draft);
@@ -124,6 +142,7 @@ private:
     AnalysisService& analysis_;
     AnnotationService& annotations_;
     std::shared_ptr<DerivedAssetService> derivedAssets_;
+    std::shared_ptr<IDocumentRenderer> documents_;
     ClipExportService clips_;
     FrameExportService frames_;
 };

@@ -89,4 +89,17 @@ if(TRACE_BUILD_DESKTOP)
         LABELS acceptance
         TIMEOUT 1800
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Phase 2: exhibit export driven through the real dialog.
+    add_executable(trace_acceptance_phase2_test integration/acceptance_phase2_test.cpp)
+    target_link_libraries(trace_acceptance_phase2_test PRIVATE
+        trace_test_support trace_ui trace_core trace_media trace_ai trace_analysis
+        trace_reporting Qt6::Core Qt6::Gui Qt6::Widgets GTest::gtest)
+    trace_apply_common_options(trace_acceptance_phase2_test)
+
+    add_test(NAME trace_acceptance_phase2 COMMAND trace_acceptance_phase2_test)
+    set_tests_properties(trace_acceptance_phase2 PROPERTIES
+        LABELS acceptance
+        TIMEOUT 900
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

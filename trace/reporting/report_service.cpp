@@ -417,9 +417,17 @@ Result<ExportOutcome> ReportService::exportReport(
     advance("Extracting the audit trail");
 
     // ------------------------------------------------------ write it out
-    if (auto added = writer.addTextFile("REPORT.html", ReportRenderer::renderHtml(content));
-        !added) {
+    const std::string html = ReportRenderer::renderHtml(content);
+    if (auto added = writer.addTextFile("REPORT.html", html); !added) {
         return fail(added.error().message());
+    }
+    if (documents_ != nullptr) {
+        if (auto status = documents_->renderPdf(html, writer.root() / "REPORT.pdf"); !status) {
+            return fail("The paginated report could not be produced: " + status.error().message());
+        }
+        if (auto added = writer.addProducedFile("REPORT.pdf"); !added) {
+            return fail(added.error().message());
+        }
     }
     if (auto added = writer.addTextFile("VERIFY.md", BundleVerifier::verifyDocument()); !added) {
         return fail(added.error().message());

@@ -25,6 +25,7 @@ class DetectionInspector;
 class DetectionsPanel;
 class EvidencePanel;
 class InspectorPanel;
+class ReportBuilderDialog;
 class TimelineWidget;
 class ViewerPanel;
 
@@ -72,6 +73,9 @@ public:
     /// Video action, also used by the acceptance test.
     void analyzeCurrentEvidence();
     void showDetections();
+    /// Opens the exhibit bundle builder for the current case.
+    ReportBuilderDialog* exportExhibitBundle();
+    void verifyExhibitBundle();
 
     void openEvidenceInViewer(const Evidence& evidence);
     void addBookmarkAtPlayhead();
@@ -125,6 +129,8 @@ private:
     QAction* editCaseAction_ = nullptr;
     QAction* analyzeAction_ = nullptr;
     QAction* cancelAnalysisAction_ = nullptr;
+    QAction* exportBundleAction_ = nullptr;
+    QAction* verifyBundleAction_ = nullptr;
     QAction* casesAction_ = nullptr;
     QAction* viewerAction_ = nullptr;
     QAction* auditAction_ = nullptr;

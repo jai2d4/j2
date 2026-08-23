@@ -3,6 +3,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QFileDialog>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
@@ -32,6 +33,7 @@
 #include "ui/common/display_utils.h"
 #include "ui/evidence_browser/evidence_panel.h"
 #include "ui/inspector/inspector_panel.h"
+#include "ui/reports/report_builder_dialog.h"
 #include "ui/timeline/timeline_widget.h"
 #include "ui/viewer/viewer_panel.h"
 
@@ -243,6 +245,21 @@ void MainWindow::buildMenus() {
     auto* detectionsAction = analysisMenu->addAction(QStringLiteral("&Detections list"));
     connect(detectionsAction, &QAction::triggered, this, &MainWindow::showDetections);
 
+    // -------------------------------------------------------------- reports
+    auto* reportMenu = menuBar()->addMenu(QStringLiteral("&Reports"));
+    exportBundleAction_ = reportMenu->addAction(QStringLiteral("&Export exhibit bundle…"));
+    exportBundleAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
+    exportBundleAction_->setToolTip(
+        QStringLiteral("Write a self-contained bundle a third party can verify without TRACE."));
+    connect(exportBundleAction_, &QAction::triggered, this,
+            [this] { exportExhibitBundle(); });
+
+    verifyBundleAction_ = reportMenu->addAction(QStringLiteral("&Verify exhibit bundle…"));
+    verifyBundleAction_->setToolTip(
+        QStringLiteral("Re-check a bundle's files against its manifest, using the same code a "
+                       "third party runs."));
+    connect(verifyBundleAction_, &QAction::triggered, this, &MainWindow::verifyExhibitBundle);
+
     // -------------------------------------------------------------- modules
     auto* moduleMenu = menuBar()->addMenu(QStringLiteral("&Modules"));
     auto* phaseNote = moduleMenu->addAction(QStringLiteral("Not built yet — later phases"));
@@ -277,6 +294,8 @@ void MainWindow::buildToolBar() {
     toolBar->addSeparator();
     toolBar->addAction(analyzeAction_);
     toolBar->addAction(cancelAnalysisAction_);
+    toolBar->addSeparator();
+    toolBar->addAction(exportBundleAction_);
 }
 
 void MainWindow::buildStatusBar() {
@@ -585,6 +604,74 @@ void MainWindow::showDetections() {
     leftTabs_->setCurrentWidget(detections_);
 }
 
+ReportBuilderDialog* MainWindow::exportExhibitBundle() {
+    if (!context_->currentCase()) {
+        statusBar()->showMessage(
+            QStringLiteral("Open a case before exporting an exhibit bundle."), 5000);
+        return nullptr;
+    }
+    auto* dialog = new ReportBuilderDialog(context_, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &ReportBuilderDialog::statusMessage, this,
+            [this](const QString& message, int timeout) {
+                statusBar()->showMessage(message.split(QLatin1Char('\n')).first(), timeout);
+            });
+    dialog->show();
+    return dialog;
+}
+
+void MainWindow::verifyExhibitBundle() {
+    const QString directory = QFileDialog::getExistingDirectory(
+        this, QStringLiteral("Select the exhibit bundle to verify"));
+    if (directory.isEmpty()) return;
+
+    const std::string caseId = context_->currentCase() ? context_->currentCase()->id : std::string();
+    const std::string caseNumber = context_->currentCaseNumber().toStdString();
+    auto verified = context_->reports().verifyBundle(directory.toStdString(), caseId, caseNumber);
+    context_->notifyAuditChanged();
+
+    if (!verified) {
+        QMessageBox::warning(this, QStringLiteral("Bundle could not be verified"),
+                             QString::fromStdString(verified.error().message()));
+        return;
+    }
+    const BundleVerification& report = verified.value();
+
+    QString detail;
+    if (!report.manifestIntact) {
+        detail = QStringLiteral("The manifest itself does not match its recorded digest.\n%1")
+                     .arg(QString::fromStdString(report.problem));
+    } else {
+        detail = QStringLiteral("%1 file(s) checked.").arg(report.files.size());
+        if (!report.allFilesMatch) {
+            detail += QStringLiteral("\n\nFiles that do not match:");
+            for (const auto& file : report.files) {
+                if (file.matches) continue;
+                detail += QStringLiteral("\n  %1 — %2")
+                              .arg(QString::fromStdString(file.path),
+                                   QString::fromStdString(file.problem));
+            }
+        }
+        if (!report.noUnlistedFiles) {
+            detail += QStringLiteral("\n\nPresent but not listed in the manifest:");
+            for (const auto& file : report.unlistedFiles) {
+                detail += QStringLiteral("\n  %1").arg(QString::fromStdString(file));
+            }
+        }
+    }
+
+    if (report.passed()) {
+        QMessageBox::information(
+            this, QStringLiteral("Bundle verified"),
+            QStringLiteral("Every file matches the digest recorded when it was exported.\n\n%1")
+                .arg(detail));
+    } else {
+        QMessageBox::warning(
+            this, QStringLiteral("Bundle FAILED verification"),
+            QStringLiteral("This bundle is not the bundle that was exported.\n\n%1").arg(detail));
+    }
+}
+
 void MainWindow::addBookmarkAtPlayhead() {
     if (!context_->currentEvidence()) {
         statusBar()->showMessage(QStringLiteral("Open an evidence item before adding a bookmark."),
@@ -672,6 +759,7 @@ void MainWindow::updateWindowState() {
     const bool isVideo = hasEvidence && context_->currentEvidence()->mediaType == MediaType::Video;
     if (analyzeAction_ != nullptr) analyzeAction_->setEnabled(isVideo && !analysisRunning);
     if (cancelAnalysisAction_ != nullptr) cancelAnalysisAction_->setEnabled(analysisRunning);
+    if (exportBundleAction_ != nullptr) exportBundleAction_->setEnabled(hasCase);
 
     if (hasCase) {
         const Case& value = *context_->currentCase();

@@ -101,6 +101,16 @@ Result<ManifestEntry> BundleWriter::addTextFile(const std::string& relativePath,
     return recordFile(absolute, relativePath);
 }
 
+Result<ManifestEntry> BundleWriter::addProducedFile(const std::string& relativePath) {
+    const auto absolute = root_ / std::filesystem::path(relativePath);
+    std::error_code ec;
+    if (!std::filesystem::exists(absolute, ec)) {
+        return Result<ManifestEntry>::failure(
+            ErrorCode::NotFound, "Nothing was produced at " + relativePath + " to record");
+    }
+    return recordFile(absolute, relativePath);
+}
+
 Result<std::string> BundleWriter::finalise(const BundleIdentity& identity) {
     // Deterministic order, so two exports of the same selection differ only where they
     // genuinely differ.

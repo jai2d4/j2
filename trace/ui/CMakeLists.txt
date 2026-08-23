@@ -27,6 +27,8 @@ add_library(trace_ui STATIC
     analysis/analysis_panel.cpp
     analysis/detections_panel.cpp
     analysis/detection_inspector.cpp
+    reports/report_builder_dialog.cpp
+    reports/qt_document_renderer.cpp
     annotations/bookmark_dialog.cpp
     annotations/annotation_dialog.cpp
     annotations/bookmarks_panel.cpp
@@ -42,6 +44,7 @@ target_link_libraries(trace_ui PUBLIC
     trace_media
     trace_ai
     trace_analysis
+    trace_reporting
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
