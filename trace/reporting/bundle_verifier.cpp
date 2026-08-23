@@ -1,4 +1,4 @@
-#include "core/reporting/bundle_verifier.h"
+#include "reporting/bundle_verifier.h"
 
 #include <algorithm>
 #include <fstream>

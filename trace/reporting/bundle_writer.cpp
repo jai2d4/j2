@@ -1,4 +1,4 @@
-#include "core/reporting/bundle_writer.h"
+#include "reporting/bundle_writer.h"
 
 #include <algorithm>
 #include <fstream>

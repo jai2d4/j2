@@ -59,10 +59,6 @@ add_library(trace_core STATIC
     services/derived_asset_service.cpp
     services/analysis_service.cpp
 
-    reporting/bundle_writer.cpp
-    reporting/bundle_verifier.cpp
-    reporting/report_renderer.cpp
-
     settings/settings_service.cpp
     settings/system_capabilities.cpp
 )

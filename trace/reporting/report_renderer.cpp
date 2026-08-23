@@ -1,4 +1,4 @@
-#include "core/reporting/report_renderer.h"
+#include "reporting/report_renderer.h"
 
 #include <algorithm>
 #include <cstdio>

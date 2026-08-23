@@ -364,6 +364,13 @@ const char* toString(AuditAction action) {
         case AuditAction::FrameExtracted:            return "frame.extracted";
         case AuditAction::DerivedAssetCreated:       return "derived_asset.created";
         case AuditAction::ExportCreated:             return "export.created";
+        case AuditAction::ClipExported:              return "clip.exported";
+        case AuditAction::ReportCreated:             return "report.created";
+        case AuditAction::ReportExported:            return "report.exported";
+        case AuditAction::ReportExportFailed:        return "report.export_failed";
+        case AuditAction::ReportExportCancelled:     return "report.export_cancelled";
+        case AuditAction::BundleVerified:            return "report.bundle_verified";
+        case AuditAction::BundleVerificationFailed:  return "report.bundle_verification_failed";
         case AuditAction::SettingsChanged:           return "settings.changed";
         case AuditAction::AnalysisStarted:           return "analysis.started";
         case AuditAction::AnalysisCompleted:         return "analysis.completed";
@@ -407,6 +414,13 @@ const char* toDisplayString(AuditAction action) {
         case AuditAction::FrameExtracted:            return "Frame extracted";
         case AuditAction::DerivedAssetCreated:       return "Derived asset created";
         case AuditAction::ExportCreated:             return "Export created";
+        case AuditAction::ClipExported:              return "Clip exported";
+        case AuditAction::ReportCreated:             return "Report created";
+        case AuditAction::ReportExported:            return "Report exported";
+        case AuditAction::ReportExportFailed:        return "Report export failed";
+        case AuditAction::ReportExportCancelled:     return "Report export cancelled";
+        case AuditAction::BundleVerified:            return "Exhibit bundle verified";
+        case AuditAction::BundleVerificationFailed:  return "Exhibit bundle verification failed";
         case AuditAction::SettingsChanged:           return "Settings changed";
         case AuditAction::AnalysisStarted:           return "Analysis started";
         case AuditAction::AnalysisCompleted:         return "Analysis completed";
@@ -450,6 +464,13 @@ AuditAction auditActionFromString(const std::string& text) {
         {"frame.extracted", AuditAction::FrameExtracted},
         {"derived_asset.created", AuditAction::DerivedAssetCreated},
         {"export.created", AuditAction::ExportCreated},
+        {"clip.exported", AuditAction::ClipExported},
+        {"report.created", AuditAction::ReportCreated},
+        {"report.exported", AuditAction::ReportExported},
+        {"report.export_failed", AuditAction::ReportExportFailed},
+        {"report.export_cancelled", AuditAction::ReportExportCancelled},
+        {"report.bundle_verified", AuditAction::BundleVerified},
+        {"report.bundle_verification_failed", AuditAction::BundleVerificationFailed},
         {"settings.changed", AuditAction::SettingsChanged},
         {"analysis.started", AuditAction::AnalysisStarted},
         {"analysis.completed", AuditAction::AnalysisCompleted},

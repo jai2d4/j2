@@ -9,7 +9,7 @@ include(GoogleTest)
 
 add_library(trace_test_support STATIC support/test_environment.cpp)
 target_include_directories(trace_test_support PUBLIC ${PROJECT_SOURCE_DIR})
-target_link_libraries(trace_test_support PUBLIC trace_core trace_media trace_ai trace_analysis)
+target_link_libraries(trace_test_support PUBLIC trace_core trace_media trace_ai trace_analysis trace_reporting)
 target_compile_definitions(trace_test_support PUBLIC
     TRACE_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
     TRACE_TEST_MODELS_DIR="${PROJECT_SOURCE_DIR}/models")
@@ -39,9 +39,11 @@ add_executable(trace_integration_tests
     integration/integrity_failure_test.cpp
     integration/media_test.cpp
     integration/detection_pipeline_test.cpp
+    integration/report_export_test.cpp
 )
 target_link_libraries(trace_integration_tests PRIVATE
-    trace_test_support trace_core trace_media trace_ai GTest::gtest GTest::gtest_main)
+    trace_test_support trace_core trace_media trace_ai trace_reporting
+    GTest::gtest GTest::gtest_main)
 trace_apply_common_options(trace_integration_tests)
 gtest_discover_tests(trace_integration_tests
     DISCOVERY_TIMEOUT 60

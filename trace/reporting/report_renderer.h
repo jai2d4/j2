@@ -13,7 +13,7 @@
 #include "core/models/evidence.h"
 #include "core/models/media_metadata.h"
 #include "core/models/report.h"
-#include "core/reporting/bundle_writer.h"
+#include "reporting/bundle_writer.h"
 
 namespace trace {
 
