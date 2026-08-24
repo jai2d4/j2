@@ -19,7 +19,7 @@ add_library(trace_media STATIC
 add_library(trace::media ALIAS trace_media)
 
 target_include_directories(trace_media PUBLIC ${PROJECT_SOURCE_DIR})
-target_link_libraries(trace_media PUBLIC trace_core PkgConfig::FFMPEG)
+target_link_libraries(trace_media PUBLIC trace_core trace::ffmpeg)
 
 if(TRACE_WITH_OPENCV)
     target_link_libraries(trace_media PUBLIC ${OpenCV_LIBS})
