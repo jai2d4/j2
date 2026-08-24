@@ -6,6 +6,9 @@
 
 #include <cmath>
 
+#include "core/security/file_hasher.h"
+#include "media/audio/waveform.h"
+#include "media/audio/waveform_service.h"
 #include "media/ffmpeg/audio_decoder.h"
 #include "tests/support/test_environment.h"
 
@@ -196,6 +199,142 @@ TEST(AudioDecoderTest, DecodingDoesNotModifyTheSourceFile) {
 
     EXPECT_EQ(std::filesystem::file_size(copy), size);
     EXPECT_EQ(std::filesystem::last_write_time(copy), before);
+}
+
+
+// ══════════════════════════════════════════════════════════════ waveforms
+
+TEST(WaveformTest, BuildsAnEnvelopeThatSpansTheWholeTrack) {
+    auto built = WaveformBuilder::build(testing::sampleVideoPath(), 512);
+    ASSERT_TRUE(built.ok()) << built.error().message();
+    const Waveform waveform = built.take();
+
+    ASSERT_TRUE(waveform.valid());
+    EXPECT_EQ(waveform.buckets(), 512u);
+    EXPECT_EQ(waveform.peaks.size(), waveform.rms.size());
+    EXPECT_NEAR(static_cast<double>(waveform.durationUs), 8'000'000.0, 300'000.0);
+
+    // The source facts travel with it, so a viewer can say what was recorded.
+    EXPECT_EQ(waveform.sourceSampleRate, 44100);
+    EXPECT_EQ(waveform.sourceChannels, 1);
+
+    // Every value is a real amplitude in range, and RMS never exceeds the peak that
+    // contains it — if it did, one of the two is being computed wrongly.
+    int nonSilent = 0;
+    for (std::size_t i = 0; i < waveform.buckets(); ++i) {
+        EXPECT_GE(waveform.peaks[i], 0.0F);
+        EXPECT_LE(waveform.peaks[i], 1.0F);
+        EXPECT_GE(waveform.rms[i], 0.0F);
+        EXPECT_LE(waveform.rms[i], waveform.peaks[i] + 1e-4F)
+            << "bucket " << i << ": rms " << waveform.rms[i] << " exceeds peak "
+            << waveform.peaks[i];
+        if (waveform.peaks[i] > 0.001F) ++nonSilent;
+    }
+    EXPECT_GT(nonSilent, 256) << "most of this clip carries a tone; the envelope looks empty";
+}
+
+TEST(WaveformTest, BucketCountIsIndependentOfHowLongTheRecordingIs) {
+    // The point of a fixed bucket count: a short clip and a long one both fit one row.
+    for (const int buckets : {64, 256, 2000}) {
+        auto built = WaveformBuilder::build(testing::sampleVideoPath(), buckets);
+        ASSERT_TRUE(built.ok()) << buckets;
+        EXPECT_EQ(built.value().buckets(), static_cast<std::size_t>(buckets));
+        EXPECT_GT(built.value().bucketDurationUs(), 0);
+    }
+}
+
+TEST(WaveformTest, RefusesABucketCountThatWouldBeUseless) {
+    EXPECT_FALSE(WaveformBuilder::build(testing::sampleVideoPath(), 0).ok());
+    EXPECT_FALSE(WaveformBuilder::build(testing::sampleVideoPath(), 4).ok());
+    EXPECT_FALSE(WaveformBuilder::build(testing::sampleVideoPath(), 1'000'000).ok());
+}
+
+TEST(WaveformTest, CancellationStopsTheBuild) {
+    auto built = WaveformBuilder::build(testing::sampleVideoPath(), 512,
+                                        [](double) { return false; });
+    ASSERT_FALSE(built.ok());
+    EXPECT_EQ(built.error().code(), ErrorCode::Cancelled);
+}
+
+TEST(WaveformTest, SurvivesARoundTripThroughItsStoredForm) {
+    auto built = WaveformBuilder::build(testing::sampleVideoPath(), 128);
+    ASSERT_TRUE(built.ok());
+    const Waveform original = built.take();
+
+    auto reloaded = Waveform::fromJson(original.toJson());
+    ASSERT_TRUE(reloaded.ok()) << reloaded.error().message();
+    const Waveform copy = reloaded.take();
+
+    EXPECT_EQ(copy.durationUs, original.durationUs);
+    EXPECT_EQ(copy.sourceSampleRate, original.sourceSampleRate);
+    EXPECT_EQ(copy.sourceChannels, original.sourceChannels);
+    ASSERT_EQ(copy.buckets(), original.buckets());
+    for (std::size_t i = 0; i < copy.buckets(); ++i) {
+        EXPECT_NEAR(copy.peaks[i], original.peaks[i], 1e-4F) << "bucket " << i;
+        EXPECT_NEAR(copy.rms[i], original.rms[i], 1e-4F) << "bucket " << i;
+    }
+}
+
+TEST(WaveformTest, AMalformedWaveformFileIsRejected) {
+    EXPECT_FALSE(Waveform::fromJson("").ok());
+    EXPECT_FALSE(Waveform::fromJson("{}").ok());
+    EXPECT_FALSE(Waveform::fromJson("{\"duration_us\": 1000}").ok());
+}
+
+TEST(WaveformTest, IsGeneratedOnceAndRegisteredWithItsProvenance) {
+    testing::TemporaryDirectory dataRoot("trace-waveform");
+    auto stack = testing::TestStack::create(dataRoot.path());
+
+    const auto incoming = dataRoot.path() / "incoming";
+    std::filesystem::create_directories(incoming);
+    const auto source = incoming / "sample.mp4";
+    std::filesystem::copy_file(testing::sampleVideoPath(), source);
+
+    CaseDraft draft;
+    draft.caseNumber = "CASE-0001";
+    draft.title = "Waveform";
+    const Case caseRecord = stack.cases->createCase(draft).value();
+
+    IngestRequest request;
+    request.caseId = caseRecord.id;
+    request.sourcePath = source;
+    const Evidence evidence = stack.evidence->ingest(request).value().evidence;
+
+    WaveformService service(*stack.layout, stack.derivedAssets);
+    auto first = service.ensureWaveform(caseRecord.id, caseRecord.caseNumber, evidence, 256);
+    ASSERT_TRUE(first.ok()) << first.error().message();
+    const DerivedAsset asset = first.take();
+
+    EXPECT_EQ(asset.type, DerivedAssetType::Waveform);
+    ASSERT_TRUE(asset.sha256.has_value());
+    EXPECT_FALSE(asset.sha256->empty());
+    EXPECT_TRUE(std::filesystem::exists(stack.layout->resolve(asset.storageRelPath)));
+
+    // Asking again returns the same asset rather than rebuilding it.
+    auto second = service.ensureWaveform(caseRecord.id, caseRecord.caseNumber, evidence, 256);
+    ASSERT_TRUE(second.ok());
+    EXPECT_EQ(second.value().id, asset.id);
+
+    // And it reads back as the envelope that was written.
+    auto loaded = service.load(asset);
+    ASSERT_TRUE(loaded.ok()) << loaded.error().message();
+    EXPECT_EQ(loaded.value().buckets(), 256u);
+    EXPECT_TRUE(loaded.value().valid());
+
+    // The managed original is untouched, as with every other derivation.
+    auto digest = hashFile(stack.layout->resolve(evidence.storageRelPath));
+    ASSERT_TRUE(digest.ok());
+    EXPECT_EQ(digest.value(), evidence.sha256);
+}
+
+TEST(WaveformTest, AnItemWithNoAudioReportsNothingToDrawRatherThanFailing) {
+    const auto clip = testing::pedestrianVideoPath();
+    if (!clip) GTEST_SKIP() << "the video-only clip is not present";
+
+    auto built = WaveformBuilder::build(*clip, 256);
+    ASSERT_FALSE(built.ok());
+    EXPECT_EQ(built.error().code(), ErrorCode::NotFound)
+        << "callers distinguish 'no audio' from 'something broke' by this code";
 }
 
 }  // namespace

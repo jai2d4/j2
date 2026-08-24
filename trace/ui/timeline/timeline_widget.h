@@ -25,6 +25,15 @@ struct TimelineTrack {
     QString name;
     QColor colour;
     std::vector<TimelineMarker> markers;
+
+    /// Peak amplitude per bucket, evenly spaced across the whole item, 0..1. When this
+    /// is set the row draws a waveform instead of markers. Two series are kept because
+    /// they answer different questions: the peak makes a transient visible, the RMS
+    /// tracks how loud a passage actually sounds.
+    std::vector<float> envelopePeaks;
+    std::vector<float> envelopeRms;
+
+    bool isEnvelope() const { return !envelopePeaks.empty(); }
 };
 
 /// The case timeline: duration, playhead, and one row per marker track.
