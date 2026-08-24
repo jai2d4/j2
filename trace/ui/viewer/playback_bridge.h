@@ -67,8 +67,11 @@ private:
     /// passage the operator has just left.
     void restartAudioAt(qint64 positionUs);
 
-    std::unique_ptr<PlaybackController> controller_;
+    // Declared before the controller so that it is destroyed *after* it: the
+    // controller's destructor joins its worker thread, and that worker is the
+    // thread that asks the audio clock where playback is.
     std::unique_ptr<AudioOutput> audio_;
+    std::unique_ptr<PlaybackController> controller_;
 };
 
 }  // namespace trace::ui

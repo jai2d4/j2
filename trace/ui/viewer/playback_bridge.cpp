@@ -6,8 +6,10 @@ namespace trace::ui {
 
 PlaybackBridge::PlaybackBridge(QObject* parent)
     : QObject(parent),
-      controller_(std::make_unique<PlaybackController>()),
-      audio_(std::make_unique<AudioOutput>(this)) {
+      // Held by the unique_ptr alone. Giving it a Qt parent as well would put two
+      // owners on one object, and the destruction order depends on this one.
+      audio_(std::make_unique<AudioOutput>()),
+      controller_(std::make_unique<PlaybackController>()) {
     // Video follows the audio device while it is playing. The source answers with
     // nothing when there is no track, no device, or the speed is not normal, and
     // the engine then paces itself exactly as it did before audio existed.
@@ -55,8 +57,10 @@ PlaybackBridge::PlaybackBridge(QObject* parent)
 }
 
 PlaybackBridge::~PlaybackBridge() {
-    // The device stops before the engine does. The other order would leave the
-    // playback worker asking a clock whose owner is already being torn down.
+    // Stop the device up front so nothing is still being heard while the engine
+    // winds down. The members then go in the order the declarations set: the
+    // controller first, joining the worker thread that asks the clock, and only
+    // then the clock's owner.
     audio_->stop();
 }
 
