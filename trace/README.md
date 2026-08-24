@@ -257,6 +257,9 @@ as importantly, what was not.
 | [docs/ANALYSIS_RUNS.md](docs/ANALYSIS_RUNS.md) | The run record, its statuses, and the rules that keep it honest |
 | [docs/MODEL_PROVENANCE.md](docs/MODEL_PROVENANCE.md) | The chain from a box on screen to the bytes of the model that drew it |
 | [docs/PHASE1_TESTING.md](docs/PHASE1_TESTING.md) | Phase 1 coverage, the defects it caught, and what was not tested |
+| [docs/REPORTING.md](docs/REPORTING.md) | Exhibit bundles, what a report may and may not say, clips |
+| [docs/EXHIBIT_VERIFICATION.md](docs/EXHIBIT_VERIFICATION.md) | How anyone verifies a bundle without TRACE |
+| [docs/PHASE2_TESTING.md](docs/PHASE2_TESTING.md) | Phase 2 coverage and what was not tested |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What Phase 2+ adds and the extension points waiting for it |
 
 ---

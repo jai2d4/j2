@@ -44,6 +44,7 @@ add_library(trace_core STATIC
     repositories/audit_repository.cpp
     repositories/provenance_repository.cpp
     repositories/analysis_repository.cpp
+    repositories/report_repository.cpp
     repositories/settings_repository.cpp
     repositories/user_repository.cpp
 

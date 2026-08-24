@@ -1,6 +1,7 @@
 #include "ui/app/application_context.h"
 
 #include "ai/detection/detection_provider_registry.h"
+#include "ui/reports/qt_document_renderer.h"
 #include "core/common/logging.h"
 #include "core/common/uuid.h"
 #include "core/database/migrations.h"
@@ -47,6 +48,10 @@ Status ApplicationContext::initialise(const std::filesystem::path& dataRoot) {
     frameExportService_ = std::make_unique<FrameExportService>(*layout_, derivedAssetService_);
     analysisService_ = std::make_shared<AnalysisService>(database_, auditService_);
     modelManager_ = std::make_unique<ModelManager>(ModelManager::defaultModelDirectory(dataRoot));
+    reportService_ = std::make_unique<ReportService>(
+        *layout_, database_, auditService_, *caseService_, *evidenceService_, *analysisService_,
+        *annotationService_, derivedAssetService_);
+    reportService_->setDocumentRenderer(std::make_shared<QtDocumentRenderer>());
     settingsService_ = std::make_unique<SettingsService>(database_, auditService_);
 
     // Providers announce themselves once per process. Listing them loads no
@@ -106,6 +111,7 @@ void ApplicationContext::shutdown() {
 
     frameExportService_.reset();
     settingsService_.reset();
+    reportService_.reset();
     modelManager_.reset();
     analysisService_.reset();
     derivedAssetService_.reset();
@@ -194,6 +200,9 @@ void ApplicationContext::notifyAnalysisRunsChanged() {
 }
 void ApplicationContext::notifyDetectionsChanged() {
     if (initialised_) emit detectionsChanged();
+}
+void ApplicationContext::notifyReportsChanged() {
+    if (initialised_) emit reportsChanged();
 }
 
 }  // namespace trace::ui

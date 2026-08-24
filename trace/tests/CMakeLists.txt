@@ -9,7 +9,7 @@ include(GoogleTest)
 
 add_library(trace_test_support STATIC support/test_environment.cpp)
 target_include_directories(trace_test_support PUBLIC ${PROJECT_SOURCE_DIR})
-target_link_libraries(trace_test_support PUBLIC trace_core trace_media trace_ai trace_analysis)
+target_link_libraries(trace_test_support PUBLIC trace_core trace_media trace_ai trace_analysis trace_reporting)
 target_compile_definitions(trace_test_support PUBLIC
     TRACE_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
     TRACE_TEST_MODELS_DIR="${PROJECT_SOURCE_DIR}/models")
@@ -39,9 +39,11 @@ add_executable(trace_integration_tests
     integration/integrity_failure_test.cpp
     integration/media_test.cpp
     integration/detection_pipeline_test.cpp
+    integration/report_export_test.cpp
 )
 target_link_libraries(trace_integration_tests PRIVATE
-    trace_test_support trace_core trace_media trace_ai GTest::gtest GTest::gtest_main)
+    trace_test_support trace_core trace_media trace_ai trace_reporting
+    GTest::gtest GTest::gtest_main)
 trace_apply_common_options(trace_integration_tests)
 gtest_discover_tests(trace_integration_tests
     DISCOVERY_TIMEOUT 60
@@ -86,5 +88,18 @@ if(TRACE_BUILD_DESKTOP)
     set_tests_properties(trace_acceptance_phase1 PROPERTIES
         LABELS acceptance
         TIMEOUT 1800
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Phase 2: exhibit export driven through the real dialog.
+    add_executable(trace_acceptance_phase2_test integration/acceptance_phase2_test.cpp)
+    target_link_libraries(trace_acceptance_phase2_test PRIVATE
+        trace_test_support trace_ui trace_core trace_media trace_ai trace_analysis
+        trace_reporting Qt6::Core Qt6::Gui Qt6::Widgets GTest::gtest)
+    trace_apply_common_options(trace_acceptance_phase2_test)
+
+    add_test(NAME trace_acceptance_phase2 COMMAND trace_acceptance_phase2_test)
+    set_tests_properties(trace_acceptance_phase2 PROPERTIES
+        LABELS acceptance
+        TIMEOUT 900
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

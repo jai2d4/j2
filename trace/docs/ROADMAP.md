@@ -5,10 +5,14 @@ hashed, played, bookmarked, annotated, verified and audited, and all of it survi
 restart.
 
 **Phase 1** is object detection: an operator can analyse a video with a real model,
-review what it found frame by frame, and answer where every box came from. It is
-complete and in this repository.
+review what it found frame by frame, and answer where every box came from.
 
-Everything below Phase 1 is future work, and none of it is implemented.
+**Phase 2** is reports and exhibit export: a case and its confirmed findings become a
+self-contained bundle that a third party can verify without TRACE, using nothing but the
+SHA-256 tool their operating system already ships.
+
+All three are complete and in this repository. Everything below Phase 2 is future work,
+and none of it is implemented.
 
 ---
 
@@ -67,7 +71,7 @@ Phase 1 — it is a real menu action now.
 
 ---
 
-## Phase 2 — recommended next
+## Phase 3 — recommended next
 
 **Audio.** It is now the largest visible gap: the metadata is already extracted and
 shown, the controls exist and are disabled, and the work is self-contained.
@@ -81,9 +85,6 @@ shown, the controls exist and are disabled, and the work is self-contained.
 
 ### Then, in rough order
 
-- **Export and reporting** — an exhibit bundle: selected frames and clips, their digests,
-  the run records behind any detection cited, and the audit extract that supports them.
-  Only *confirmed* detections should be eligible.
 - **Detection review at scale** — keyboard-driven review, bulk confirm/reject within a
   time range and class, and a review-progress indicator per run.
 - **GPU verification** — the CUDA path is written and guarded but has never executed on a

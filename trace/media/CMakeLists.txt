@@ -9,6 +9,7 @@ add_library(trace_media STATIC
     playback/playback_controller.cpp
     thumbnails/image_writer.cpp
     thumbnails/frame_export_service.cpp
+    export/clip_export_service.cpp
 )
 
 add_library(trace::media ALIAS trace_media)

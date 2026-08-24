@@ -35,6 +35,13 @@ enum class AuditAction {
     FrameExtracted,
     DerivedAssetCreated,
     ExportCreated,
+    ClipExported,
+    ReportCreated,
+    ReportExported,
+    ReportExportFailed,
+    ReportExportCancelled,
+    BundleVerified,
+    BundleVerificationFailed,
     SettingsChanged,
     // Phase 1 — analysis
     AnalysisStarted,

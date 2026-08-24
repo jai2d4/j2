@@ -65,6 +65,7 @@ add_subdirectory(core)
 add_subdirectory(media)
 add_subdirectory(ai)
 add_subdirectory(analysis)
+add_subdirectory(reporting)
 
 if(TRACE_BUILD_DESKTOP)
     add_subdirectory(ui)
