@@ -55,6 +55,60 @@ dialog → audit has a failure and no export.
 export commits (the guard against the Phase 1 defect where a Cancel button stayed
 disabled for a whole run) → cancelling leaves no bundle and nothing recorded as exported.
 
+## Verified by hand, outside TRACE
+
+The design rests on a bundle being checkable by someone with nothing but their operating
+system, so that was done rather than assumed. A real bundle was exported — a case, an
+ingested clip, a real YOLOX-Tiny run producing 3,016 detections, three confirmed by an
+analyst, one frame and one three-second clip as exhibits — and then checked from a plain
+shell with no TRACE process running:
+
+```
+$ sha256sum -c MANIFEST.sha256
+MANIFEST.json: OK
+MANIFEST.checksums: OK
+
+$ sha256sum -c MANIFEST.checksums
+REPORT.html: OK
+REPORT.pdf: OK
+VERIFY.md: OK
+audit/audit_extract.csv: OK
+audit/audit_extract.json: OK
+exhibits/EVD-000001_clip_00-00-02-000_39fcc27e.avi: OK
+exhibits/EVD-000001_frame_00-00-01-500_8dec5771.png: OK
+provenance/analysis_runs.json: OK
+provenance/detections.json: OK
+provenance/evidence.json: OK
+```
+
+Flipping a single byte in the frame exhibit produced `FAILED` on that line, a
+`WARNING: 1 computed checksum did NOT match`, and exit status 1.
+
+### What that exercise found
+
+**Two commands were not enough.** `sha256sum -c` proves every *listed* file is intact. It
+cannot detect a file that has been **added**, because an extra file is not on the list to
+be checked. A bundle carrying a planted file passed both commands:
+
+```
+$ sha256sum -c MANIFEST.sha256      → all OK
+$ sha256sum -c MANIFEST.checksums   → all OK        (blind to the planted file)
+$ # count comparison
+3. MISMATCH: 11 files present, 10 listed
+   not vouched for by any manifest:
+     exhibits/planted.txt
+```
+
+TRACE's own verifier had always reported unlisted files, but `VERIFY.md` — the
+instructions a third party actually follows — did not tell them to look. It does now: a
+third check compares the file count and names anything unaccounted for, and
+`REPORTING.md` no longer claims two commands cover a bundle.
+
+Two tests pin this: one asserts `VERIFY.md` carries the count comparison and says why
+the digest checks are insufficient alone, and one runs that arithmetic against a real
+bundle before and after planting a file, asserting that every digest still matches while
+the count does not.
+
 ## Two defects the tests caught
 
 Both were in the tests, not the code, and both were corrected rather than worked around:
@@ -74,8 +128,7 @@ Both were in the tests, not the code, and both were corrected rather than worked
 | **Clips from varied containers** | Only the synthetic H.264/MP4 sample; stream copy from other containers is untested |
 | **Re-encode fallback** | Not implemented, so not tested |
 | **Windows and macOS** | Not built or run in this phase; the PowerShell verification snippet in `VERIFY.md` is written but unexecuted |
-| **A third party on a clean machine** | Verification is proven by re-hashing inside the test process. Nobody has yet taken a bundle to a machine without TRACE and followed `VERIFY.md` by hand |
+| **A genuinely foreign machine** | The by-hand verification above ran in a plain shell on the build machine, with no TRACE process involved. It has still not been done on a different computer, by a different person, from a bundle transferred on physical media |
 
-That last row is the one to close first: the whole design rests on a bundle being
-checkable by someone with nothing but their operating system, and that has been
-demonstrated in code but not in practice.
+The remaining gap is narrower than it was: verification has been demonstrated by hand
+with standard tools, but not yet by an independent person on their own machine.

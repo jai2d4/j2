@@ -380,6 +380,78 @@ TEST(ReportExportTest, CancellingLeavesNoBundlePresentedAsComplete) {
     EXPECT_FALSE(producedCompleteBundle(stored.value()->status));
 }
 
+TEST(ReportExportTest, VerifyInstructionsTellAReaderHowToDetectAnAddedFile) {
+    // The bundle's own instructions have to be sufficient. A digest check cannot catch
+    // a file that was added — it is not on the list to be checked — so VERIFY.md must
+    // carry a count comparison as well, or a reader following it exactly would miss the
+    // one kind of tampering sha256sum is blind to.
+    const std::string document = BundleVerifier::verifyDocument();
+
+    EXPECT_NE(document.find("sha256sum -c MANIFEST.sha256"), std::string::npos);
+    EXPECT_NE(document.find("sha256sum -c MANIFEST.checksums"), std::string::npos);
+
+    EXPECT_NE(document.find("wc -l < MANIFEST.checksums"), std::string::npos)
+        << "VERIFY.md must show the reader how to count what the manifest lists";
+    EXPECT_NE(document.find("find . -type f"), std::string::npos)
+        << "VERIFY.md must show the reader how to count what is actually present";
+    EXPECT_NE(document.find("has been *added*"), std::string::npos)
+        << "VERIFY.md must say plainly why the digest checks are not sufficient alone";
+
+    // And it must not overstate what any of it proves.
+    EXPECT_NE(document.find("not a digital signature"), std::string::npos);
+    EXPECT_NE(document.find("not who wrote it"), std::string::npos);
+}
+
+TEST(ReportExportTest, TheDocumentedCountCheckActuallyCatchesAPlantedFile) {
+    // Run the arithmetic VERIFY.md asks a reader to run, and confirm it disagrees
+    // exactly when a file has been planted.
+    Fixture fixture;
+    auto service = fixture.service();
+    auto created = service.createReport(fixture.baseDraft());
+    ASSERT_TRUE(created.ok());
+    const auto destination = fixture.dataRoot.path() / "out";
+    std::filesystem::create_directories(destination);
+    auto exported = service.exportReport(created.value().id, destination);
+    ASSERT_TRUE(exported.ok());
+    const auto outcome = exported.take();
+    ASSERT_EQ(outcome.status, ReportStatus::Exported);
+
+    const auto countPresent = [&] {
+        int n = 0;
+        for (const auto& entry :
+             std::filesystem::recursive_directory_iterator(outcome.bundlePath)) {
+            if (!entry.is_regular_file()) continue;
+            if (entry.path().filename().string().rfind("MANIFEST.", 0) == 0) continue;
+            ++n;
+        }
+        return n;
+    };
+    const auto countListed = [&] {
+        std::ifstream listing(outcome.bundlePath / "MANIFEST.checksums");
+        int n = 0;
+        std::string line;
+        while (std::getline(listing, line)) {
+            if (!line.empty()) ++n;
+        }
+        return n;
+    };
+
+    EXPECT_EQ(countPresent(), countListed()) << "a freshly written bundle must agree";
+
+    { std::ofstream(outcome.bundlePath / "exhibits" / "planted.txt") << "added later\n"; }
+
+    EXPECT_NE(countPresent(), countListed())
+        << "the count comparison must notice a planted file";
+    EXPECT_EQ(countPresent(), countListed() + 1);
+
+    // And every listed digest still matches, which is precisely why the count is needed.
+    auto verified = BundleVerifier::verify(outcome.bundlePath);
+    ASSERT_TRUE(verified.ok());
+    EXPECT_TRUE(verified.value().allFilesMatch)
+        << "the digest checks alone are blind to an added file";
+    EXPECT_FALSE(verified.value().passed());
+}
+
 // ─────────────────────────────────────────────────── the confirmed-only rule
 
 TEST(ReportExportTest, CitingAnUnconfirmedDetectionWithoutOptingInFailsTheExport) {

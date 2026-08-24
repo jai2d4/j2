@@ -41,15 +41,21 @@ reader may not have. So the file list is written twice:
 | `MANIFEST.json` | The same list plus export identity, for anything reading it programmatically. |
 | `MANIFEST.sha256` | Digests of the other two, so tampering with a manifest is caught. |
 
-Two commands check an entire bundle:
+Three checks cover an entire bundle:
 
 ```bash
-sha256sum -c MANIFEST.sha256
-sha256sum -c MANIFEST.checksums
+sha256sum -c MANIFEST.sha256      # the manifests themselves
+sha256sum -c MANIFEST.checksums   # every file they list
+                                  # and a file count, for anything added
 ```
 
-That is the whole verification story. It needs no parser, no Python, and no trust in the
-software that produced the bundle.
+The third matters as much as the other two. **A digest check cannot detect an added
+file** — an extra file is simply not on the list, so both `sha256sum` runs report `OK`
+while the bundle contains something nobody vouched for. `VERIFY.md` carries the count
+comparison that closes that gap, and names any file it finds.
+
+None of it needs a parser, a scripting language, or trust in the software that produced
+the bundle.
 
 ## What a report contains
 
