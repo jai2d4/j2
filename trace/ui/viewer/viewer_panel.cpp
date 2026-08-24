@@ -287,7 +287,9 @@ void ViewerPanel::openEvidence(const Evidence& evidence) {
     jumpForwardButton_->setText(jumpText + QStringLiteral(" »"));
 
     if (evidence.mediaType != MediaType::Video && evidence.mediaType != MediaType::Image) {
-        view_->clear(QStringLiteral("%1 is %2 — the Phase 0 viewer plays video only.")
+        // Audio-only items are decoded and their waveform is built, but the viewer
+        // itself shows a picture; there is no picture here to show.
+        view_->clear(QStringLiteral("%1 is %2 — the viewer plays video.")
                          .arg(QString::fromStdString(evidence.evidenceNumber),
                               QString::fromUtf8(toDisplayString(evidence.mediaType)).toLower()));
         applyControlsEnabled(false);
