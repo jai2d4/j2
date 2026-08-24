@@ -38,6 +38,7 @@ add_executable(trace_integration_tests
     integration/persistence_test.cpp
     integration/integrity_failure_test.cpp
     integration/media_test.cpp
+    integration/audio_test.cpp
     integration/detection_pipeline_test.cpp
     integration/report_export_test.cpp
 )

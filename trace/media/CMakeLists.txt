@@ -6,6 +6,7 @@ add_library(trace_media STATIC
     ffmpeg/ffmpeg_support.cpp
     ffmpeg/media_probe.cpp
     ffmpeg/video_decoder.cpp
+    ffmpeg/audio_decoder.cpp
     playback/playback_controller.cpp
     thumbnails/image_writer.cpp
     thumbnails/frame_export_service.cpp
