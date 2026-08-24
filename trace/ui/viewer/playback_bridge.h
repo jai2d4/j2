@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "media/playback/playback_controller.h"
+#include "ui/audio/audio_output.h"
 
 namespace trace::ui {
 
@@ -35,6 +36,14 @@ public:
     void stepBackward();
     void setSpeed(double speed);
 
+    /// True when this item has an audio track and a device that can play it.
+    /// When false, audioUnavailableReason() says which, so the viewer can label
+    /// its controls with the reason instead of leaving them dead.
+    bool hasAudio() const;
+    QString audioUnavailableReason() const;
+    void setVolume(int percent);
+    void setMuted(bool muted);
+
     qint64 position() const;
     qint64 duration() const;
     double speed() const;
@@ -53,7 +62,13 @@ signals:
     void mediaOpened(qint64 durationUs, int width, int height);
 
 private:
+    /// Audio is started fresh at a position rather than left running across a
+    /// seek: a device holding buffered audio would otherwise keep playing the
+    /// passage the operator has just left.
+    void restartAudioAt(qint64 positionUs);
+
     std::unique_ptr<PlaybackController> controller_;
+    std::unique_ptr<AudioOutput> audio_;
 };
 
 }  // namespace trace::ui

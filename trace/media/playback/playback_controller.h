@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -49,6 +50,24 @@ public:
     void setFrameHandler(FrameHandler handler);
     void setStateHandler(StateHandler handler);
     void setOpenedHandler(OpenedHandler handler);
+
+    /// Where playback's idea of "now" comes from while it is playing.
+    ///
+    /// With no audio there is nothing to follow: frames are paced against their
+    /// own presentation timestamps and the steady clock, which is what this
+    /// engine has always done. When an audio device is playing, that device
+    /// becomes the reference instead and video follows it — see AudioClock for
+    /// why the device rather than the system clock gets to be right.
+    ///
+    /// The callback returns the media position the device has reached, or
+    /// nothing when it cannot say: no audio track, not playing, or a speed at
+    /// which audio is silenced. Nothing means the steady clock takes over again,
+    /// so a file with no sound behaves exactly as it did before.
+    ///
+    /// Called on the playback worker thread, once per frame. It must not block
+    /// and must not call back into this controller.
+    using ClockSource = std::function<std::optional<Microseconds>()>;
+    void setClockSource(ClockSource source);
 
     /// Queues an open. Completion arrives as Ready (plus the opened handler) or
     /// Error with a message suitable for display.
@@ -124,6 +143,7 @@ private:
     FrameHandler frameHandler_;
     StateHandler stateHandler_;
     OpenedHandler openedHandler_;
+    ClockSource clockSource_;
 
     std::chrono::steady_clock::time_point clockStart_;
     Microseconds clockStartMediaUs_ = 0;

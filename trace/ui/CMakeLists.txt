@@ -14,6 +14,7 @@ add_library(trace_ui STATIC
     common/detection_overlay.cpp
 
     app/application_context.cpp
+    audio/audio_output.cpp
     app/main_window.cpp
 
     case_browser/case_dialog.cpp
@@ -48,5 +49,6 @@ target_link_libraries(trace_ui PUBLIC
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
+    Qt6::Multimedia
 )
 trace_apply_common_options(trace_ui)

@@ -148,6 +148,11 @@ void PlaybackController::setState(PlaybackState state, std::string message) {
     if (handler) handler(state, std::move(message));
 }
 
+void PlaybackController::setClockSource(ClockSource source) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clockSource_ = std::move(source);
+}
+
 void PlaybackController::deliverFrame(std::shared_ptr<const VideoFrameData> frame) {
     FrameHandler handler;
     {
@@ -313,6 +318,23 @@ void PlaybackController::decodeAndPresentNext() {
         return;
     }
     auto shared = std::make_shared<const VideoFrameData>(frame.take());
+
+    // Re-anchor to the reference clock before pacing. When audio is playing this
+    // is what keeps the two together: video is measured against where the sound
+    // card has actually got to, re-checked every frame, so the two can never
+    // drift apart by more than one frame's worth. With no audio the source
+    // answers nothing and the steady clock keeps its anchor, unchanged.
+    ClockSource clockSource;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        clockSource = clockSource_;
+    }
+    if (clockSource) {
+        if (const auto reference = clockSource()) {
+            clockStart_ = std::chrono::steady_clock::now();
+            clockStartMediaUs_ = *reference;
+        }
+    }
 
     // Pace against the frame's own presentation timestamp, scaled by the
     // playback speed. Waiting happens on the condition variable so an incoming

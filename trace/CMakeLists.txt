@@ -46,7 +46,7 @@ if(TRACE_WITH_OPENCV)
 endif()
 
 if(TRACE_BUILD_DESKTOP)
-    find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent)
+    find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent Multimedia)
     qt_standard_project_setup()
     set(CMAKE_AUTOUIC OFF)
 endif()

@@ -103,4 +103,18 @@ if(TRACE_BUILD_DESKTOP)
         LABELS acceptance
         TIMEOUT 900
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Phase 3: audio — the waveform as a derived asset, and what the transport
+    # can honestly claim on the machine the test is running on.
+    add_executable(trace_acceptance_phase3_test integration/acceptance_phase3_test.cpp)
+    target_link_libraries(trace_acceptance_phase3_test PRIVATE
+        trace_test_support trace_ui trace_core trace_media trace_ai trace_analysis
+        trace_reporting Qt6::Core Qt6::Gui Qt6::Widgets GTest::gtest)
+    trace_apply_common_options(trace_acceptance_phase3_test)
+
+    add_test(NAME trace_acceptance_phase3 COMMAND trace_acceptance_phase3_test)
+    set_tests_properties(trace_acceptance_phase3 PROPERTIES
+        LABELS acceptance
+        TIMEOUT 900
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

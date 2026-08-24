@@ -4,12 +4,17 @@
 // 48 kHz exercises format conversion, channel upmixing and rate conversion at once.
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <thread>
 
 #include "core/security/file_hasher.h"
+#include "media/audio/audio_clock.h"
 #include "media/audio/waveform.h"
 #include "media/audio/waveform_service.h"
 #include "media/ffmpeg/audio_decoder.h"
+#include "media/playback/playback_controller.h"
 #include "tests/support/test_environment.h"
 
 namespace trace {
@@ -203,6 +208,160 @@ TEST(AudioDecoderTest, DecodingDoesNotModifyTheSourceFile) {
 
 
 // ══════════════════════════════════════════════════════════════ waveforms
+
+// ---------------------------------------------------------------------------
+// The reference clock. This is the arithmetic that decides where video is drawn
+// relative to what is being heard, so it is tested on its own — an audio device
+// is not needed to get it wrong.
+// ---------------------------------------------------------------------------
+
+TEST(AudioClockTest, SaysNothingUntilItIsRunning) {
+    AudioClock clock;
+    EXPECT_FALSE(clock.running());
+    EXPECT_FALSE(clock.positionUs().has_value())
+        << "a clock that is not running must not offer a position: the caller has to "
+           "know to fall back to its own timing";
+
+    clock.start(0);
+    EXPECT_TRUE(clock.running());
+    ASSERT_TRUE(clock.positionUs().has_value());
+
+    clock.stop();
+    EXPECT_FALSE(clock.positionUs().has_value())
+        << "a stopped clock must not keep answering with a position that has quietly "
+           "stopped advancing";
+}
+
+TEST(AudioClockTest, ReportsWhereTheDeviceIsOnTheMediaTimeline) {
+    AudioClock clock;
+
+    // Playback started five seconds in, as it would after a seek.
+    clock.start(5'000'000);
+    EXPECT_EQ(clock.positionUs().value(), 5'000'000)
+        << "before the device has said anything the clock is exactly where it was told "
+           "to start, not an extrapolation from the system clock";
+
+    // The device counts from its own start, not from the media timeline: that
+    // offset is what this class exists to add back.
+    clock.reportDevicePosition(250'000);
+    EXPECT_EQ(clock.positionUs().value(), 5'250'000);
+
+    clock.reportDevicePosition(1'000'000);
+    EXPECT_EQ(clock.positionUs().value(), 6'000'000);
+}
+
+TEST(AudioClockTest, ASeekMovesTheOriginRatherThanAccumulating) {
+    AudioClock clock;
+    clock.start(0);
+    clock.reportDevicePosition(3'000'000);
+    ASSERT_EQ(clock.positionUs().value(), 3'000'000);
+
+    // Restarting is what a seek does. The device's count restarts with it, so the
+    // three seconds already played must not be carried over.
+    clock.start(30'000'000);
+    EXPECT_EQ(clock.positionUs().value(), 30'000'000);
+    clock.reportDevicePosition(100'000);
+    EXPECT_EQ(clock.positionUs().value(), 30'100'000);
+}
+
+TEST(AudioClockTest, ADeviceCountThatJumpsBackwardsDoesNotDragPlaybackBack) {
+    AudioClock clock;
+    clock.start(0);
+    clock.reportDevicePosition(2'000'000);
+    clock.reportDevicePosition(1'000'000);  // some backends do this around an underrun
+    EXPECT_EQ(clock.positionUs().value(), 2'000'000)
+        << "video would visibly jump backwards; a real backwards move on the media "
+           "timeline is a seek, and a seek restarts the clock";
+
+    clock.reportDevicePosition(-5'000);
+    EXPECT_EQ(clock.positionUs().value(), 2'000'000);
+}
+
+TEST(AudioClockTest, AudioIsRenderedOnlyAtNormalSpeed) {
+    EXPECT_TRUE(audioPlaysAtSpeed(1.0));
+    // Every other speed the viewer offers. Resampling to reach them would shift the
+    // pitch of a recorded voice, which misrepresents the recording; TRACE silences
+    // the track instead of altering it.
+    for (double speed : kPlaybackSpeeds) {
+        if (speed == 1.0) continue;
+        EXPECT_FALSE(audioPlaysAtSpeed(speed)) << "speed " << speed;
+    }
+}
+
+TEST(PlaybackClockSourceTest, VideoFollowsTheReferenceClockWhenThereIsOne) {
+    PlaybackController controller;
+
+    // A clock standing well ahead of the start: if video is really pacing against
+    // it, the frames it hurries through are the ones before that position.
+    std::atomic<Microseconds> reference{4'000'000};
+    controller.setClockSource(
+        [&reference]() -> std::optional<Microseconds> { return reference.load(); });
+
+    std::atomic<int> frames{0};
+    std::atomic<Microseconds> latest{-1};
+    controller.setFrameHandler([&](std::shared_ptr<const VideoFrameData> frame) {
+        if (!frame) return;
+        latest.store(frame->presentationUs);
+        frames.fetch_add(1);
+    });
+
+    controller.open(testing::sampleVideoPath());
+    ASSERT_TRUE(controller.waitForState({PlaybackState::Ready, PlaybackState::Error}, 10'000));
+    ASSERT_EQ(controller.state(), PlaybackState::Ready);
+
+    const auto startedAt = std::chrono::steady_clock::now();
+    controller.play();
+    // Four seconds of media in well under four seconds of wall time is only
+    // possible if the frames were paced against the clock source rather than
+    // against their own timestamps.
+    while (latest.load() < 3'000'000 &&
+           std::chrono::steady_clock::now() - startedAt < std::chrono::seconds(10)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    const auto elapsed = std::chrono::steady_clock::now() - startedAt;
+    controller.pause();
+
+    EXPECT_GE(latest.load(), 3'000'000) << "playback never reached the reference position";
+    EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 3'000)
+        << "three seconds of media took three seconds of wall time, so the clock source "
+           "was ignored and the steady clock was still pacing";
+    EXPECT_GT(frames.load(), 1);
+}
+
+TEST(PlaybackClockSourceTest, WithoutAClockSourceFramesKeepTheirOwnPace) {
+    PlaybackController controller;
+
+    // The source is installed but declines to answer, which is what a file with no
+    // audio track does. Pacing has to fall back to the frames' own timestamps.
+    std::atomic<int> asked{0};
+    controller.setClockSource([&asked]() -> std::optional<Microseconds> {
+        asked.fetch_add(1);
+        return std::nullopt;
+    });
+
+    std::atomic<Microseconds> latest{-1};
+    controller.setFrameHandler([&](std::shared_ptr<const VideoFrameData> frame) {
+        if (frame) latest.store(frame->presentationUs);
+    });
+
+    controller.open(testing::sampleVideoPath());
+    ASSERT_TRUE(controller.waitForState({PlaybackState::Ready, PlaybackState::Error}, 10'000));
+    ASSERT_EQ(controller.state(), PlaybackState::Ready);
+
+    const auto startedAt = std::chrono::steady_clock::now();
+    controller.play();
+    std::this_thread::sleep_for(std::chrono::milliseconds(600));
+    controller.pause();
+    const auto elapsed = std::chrono::steady_clock::now() - startedAt;
+
+    EXPECT_GT(asked.load(), 0) << "the clock source was never consulted";
+    ASSERT_GE(latest.load(), 0) << "no frame was delivered at all";
+    // Real-time pacing: the media position reached cannot have run far ahead of the
+    // wall time spent reaching it.
+    const auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+    EXPECT_LT(latest.load(), elapsedUs + 500'000)
+        << "media ran ahead of wall time, so nothing was pacing playback";
+}
 
 TEST(WaveformTest, BuildsAnEnvelopeThatSpansTheWholeTrack) {
     auto built = WaveformBuilder::build(testing::sampleVideoPath(), 512);
