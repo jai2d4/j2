@@ -142,9 +142,9 @@ jobs:
           $root = (Get-ChildItem ort -Directory | Select-Object -First 1).FullName
           "ORT_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Install SQLite
+      - name: Install SQLite and GoogleTest
         shell: pwsh
-        run: vcpkg install sqlite3:x64-windows
+        run: vcpkg install sqlite3:x64-windows gtest:x64-windows
 
       - name: Fetch detection model
         shell: pwsh
