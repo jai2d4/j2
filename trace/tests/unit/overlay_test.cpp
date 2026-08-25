@@ -152,7 +152,12 @@ int main(int argc, char** argv) {
     // platform when the caller has not chosen one keeps them runnable on a
     // build machine with no display, including during test discovery.
     if (std::getenv("QT_QPA_PLATFORM") == nullptr) {
+        // setenv is POSIX; Windows spells it _putenv_s.
+#if defined(_WIN32)
+        _putenv_s("QT_QPA_PLATFORM", "offscreen");
+#else
         setenv("QT_QPA_PLATFORM", "offscreen", 0);
+#endif
     }
     QApplication application(argc, argv);
     ::testing::InitGoogleTest(&argc, argv);

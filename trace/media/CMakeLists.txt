@@ -6,6 +6,10 @@ add_library(trace_media STATIC
     ffmpeg/ffmpeg_support.cpp
     ffmpeg/media_probe.cpp
     ffmpeg/video_decoder.cpp
+    ffmpeg/audio_decoder.cpp
+    audio/audio_clock.cpp
+    audio/waveform.cpp
+    audio/waveform_service.cpp
     playback/playback_controller.cpp
     thumbnails/image_writer.cpp
     thumbnails/frame_export_service.cpp
@@ -15,7 +19,7 @@ add_library(trace_media STATIC
 add_library(trace::media ALIAS trace_media)
 
 target_include_directories(trace_media PUBLIC ${PROJECT_SOURCE_DIR})
-target_link_libraries(trace_media PUBLIC trace_core PkgConfig::FFMPEG)
+target_link_libraries(trace_media PUBLIC trace_core trace::ffmpeg)
 
 if(TRACE_WITH_OPENCV)
     target_link_libraries(trace_media PUBLIC ${OpenCV_LIBS})

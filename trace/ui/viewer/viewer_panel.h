@@ -36,6 +36,10 @@ public:
 
     PlaybackBridge* playback() const { return playback_.get(); }
 
+    // Accessors used by the acceptance test to drive the real UI.
+    QToolButton* muteButton() const { return muteButton_; }
+    QSlider* volumeSlider() const { return volumeSlider_; }
+
     void openEvidence(const Evidence& evidence);
     void closeMedia();
 
@@ -86,6 +90,8 @@ private:
     void updateTimeLabels(qint64 positionUs, qint64 frameNumber);
     void applyControlsEnabled(bool enabled);
     void pushOverlayOptions();
+    /// Enables the audio transport for this item, or says why it is off.
+    void refreshAudioControls();
     void updateOverlaySummary();
 
     ApplicationContext* context_ = nullptr;

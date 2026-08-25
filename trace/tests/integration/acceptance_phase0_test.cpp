@@ -5,6 +5,7 @@
 // documented workflow, then restarts it and checks that everything survived.
 // Only the file-chooser dialog is bypassed: the import runs through the real
 // IngestDialog with the path supplied directly.
+#include <algorithm>
 #include <gtest/gtest.h>
 
 #include <QApplication>
@@ -39,6 +40,24 @@
 
 namespace trace {
 namespace {
+
+/// Signs in the way the application does, so the acceptance tests exercise the
+/// real startup path rather than a permissive one that exists only for tests.
+/// Since local accounts arrived, UserContext grants no authority until a
+/// credential has been verified — a test that skipped this would be testing a
+/// TRACE nobody runs.
+bool signInForTest(trace::ui::ApplicationContext& context) {
+    constexpr const char* kUser = "acceptance";
+    constexpr const char* kPassword = "acceptance test password";
+    auto needed = context.auth().needsFirstRunSetup();
+    if (!needed) return false;
+    if (needed.value()) {
+        if (!context.auth().createFirstAdministrator(kUser, "Acceptance Operator", kPassword)) {
+            return false;
+        }
+    }
+    return context.auth().signIn(kUser, kPassword).ok();
+}
 
 /// Where to drop screenshots when the harness asks for them.
 std::filesystem::path screenshotDirectory() {
@@ -154,6 +173,7 @@ TEST(AcceptancePhase0, TheDocumentedWorkflowSucceedsEndToEnd) {
         // 1. Launch TRACE.
         ui::ApplicationContext context;
         ASSERT_TRUE(context.initialise(dataRoot.path()).ok());
+        ASSERT_TRUE(signInForTest(context));
         ui::MainWindow window(&context);
         window.resize(1600, 950);
         window.show();
@@ -321,6 +341,7 @@ TEST(AcceptancePhase0, TheDocumentedWorkflowSucceedsEndToEnd) {
         // 12. Reopen TRACE against the same data directory.
         ui::ApplicationContext context;
         ASSERT_TRUE(context.initialise(dataRoot.path()).ok());
+        ASSERT_TRUE(signInForTest(context));
         ui::MainWindow window(&context);
         window.resize(1600, 950);
         window.show();

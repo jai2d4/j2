@@ -71,19 +71,26 @@ Phase 1 — it is a real menu action now.
 
 ---
 
-## Phase 3 — recommended next
+## Phase 3 — built
 
-**Audio.** It is now the largest visible gap: the metadata is already extracted and
-shown, the controls exist and are disabled, and the work is self-contained.
+**Audio.** Decoding, the waveform as a derived asset and timeline track, playback
+through `QAudioSink`, and the volume and mute controls. See `docs/AUDIO.md`.
 
-1. Decode audio alongside video in `PlaybackController` (a second decoder and a
-   resampler; `libswresample` is already a dependency).
-2. Render through `QAudioSink` (add `Qt6::Multimedia`), driven by the same presentation
-   clock so audio and video stay locked.
-3. Enable the volume and mute controls and persist their state — the settings keys exist.
-4. Add a waveform as a `TimelineTrack`, generated as a derived asset with provenance.
+One piece of it is **written but unproven**: no machine with an audio device has run
+the sink. `docs/AUDIO.md` §5 lists exactly which claims are measured, which are not, and
+what to check on real hardware — the most likely thing to need adjusting is whether a
+given backend's `processedUSecs()` reports played-out or merely written audio.
 
-### Then, in rough order
+Still open from this area:
+
+- **Time-stretched audio.** Other playback speeds silence the track rather than
+  pitch-shift it, because a pitch-shifted voice misrepresents a recording. Honest
+  playback at 0.5× and 2× needs `libavfilter`'s `atempo`, which is not yet a dependency.
+- **Audio events as an analysis type.** `analysis_runs.analysis_type` and the waveform
+  pipeline are both in place; a detector would need its own results table and a
+  pipeline in `analysis/`.
+
+### Phase 4 — then, in rough order
 
 - **Detection review at scale** — keyboard-driven review, bulk confirm/reject within a
   time range and class, and a review-progress indicator per run.
@@ -93,8 +100,9 @@ shown, the controls exist and are disabled, and the work is self-contained.
 - **Working copies** — a proportionate transcode for awkward codecs, recorded as a
   derived asset with its parameters, so analysis runs on a known format while the
   original stays untouched.
-- **Local accounts** — password hashing and login on top of the existing `users` table
-  and permission gate.
+- ~~**Local accounts**~~ — built. PBKDF2-HMAC-SHA256, lockout, an audited sign-in and
+  a role gate with teeth. See `docs/AUTHENTICATION.md`, whose §6 lists what it
+  deliberately does not protect.
 - **Encrypted storage** — the managed layout and relative paths already make a per-case
   encrypted container feasible without touching the domain.
 

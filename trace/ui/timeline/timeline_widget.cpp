@@ -223,6 +223,51 @@ void TimelineWidget::paintEvent(QPaintEvent*) {
         painter.drawText(QRect(area.left() + 2, area.top(), 90, area.height()),
                          Qt::AlignLeft | Qt::AlignVCenter, track.name);
 
+        if (track.isEnvelope()) {
+            // The envelope spans the whole item, so each bucket maps to a moment and
+            // then to an x position — which means it stays correct under zoom and
+            // scroll without being rebuilt.
+            const QRect plot(area.left() + 94, area.top() + 2, area.right() - area.left() - 96,
+                             area.height() - 4);
+            if (plot.width() > 0 && durationUs_ > 0) {
+                const int midline = plot.center().y();
+                painter.setPen(QPen(QColor(track.colour.red(), track.colour.green(),
+                                           track.colour.blue(), 60), 1));
+                painter.drawLine(plot.left(), midline, plot.right(), midline);
+
+                const auto bucketCount = track.envelopePeaks.size();
+                QColor peakColour = track.colour;
+                peakColour.setAlpha(120);
+                QColor rmsColour = track.colour;
+                rmsColour.setAlpha(220);
+
+                for (int px = plot.left(); px <= plot.right(); ++px) {
+                    const qint64 at = timeAtX(px);
+                    if (at < 0 || at > durationUs_) continue;
+                    auto bucket = static_cast<std::size_t>(
+                        static_cast<double>(at) / static_cast<double>(durationUs_) *
+                        static_cast<double>(bucketCount));
+                    if (bucket >= bucketCount) bucket = bucketCount - 1;
+
+                    const int peakHeight = static_cast<int>(
+                        static_cast<double>(track.envelopePeaks[bucket]) * (plot.height() / 2.0));
+                    if (peakHeight > 0) {
+                        painter.setPen(peakColour);
+                        painter.drawLine(px, midline - peakHeight, px, midline + peakHeight);
+                    }
+                    if (bucket < track.envelopeRms.size()) {
+                        const int rmsHeight = static_cast<int>(
+                            static_cast<double>(track.envelopeRms[bucket]) * (plot.height() / 2.0));
+                        if (rmsHeight > 0) {
+                            painter.setPen(rmsColour);
+                            painter.drawLine(px, midline - rmsHeight, px, midline + rmsHeight);
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+
         for (const auto& marker : track.markers) {
             const double startX = xAtTime(marker.startUs);
             if (marker.endUs) {

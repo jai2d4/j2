@@ -27,6 +27,7 @@ add_library(trace_core STATIC
     common/string_utils.cpp
 
     security/sha256.cpp
+    security/password.cpp
     security/file_hasher.cpp
     security/user_context.cpp
 
@@ -37,6 +38,7 @@ add_library(trace_core STATIC
     models/enums.cpp
 
     repositories/case_repository.cpp
+    repositories/user_repository.cpp
     repositories/evidence_repository.cpp
     repositories/metadata_repository.cpp
     repositories/bookmark_repository.cpp
@@ -52,6 +54,7 @@ add_library(trace_core STATIC
     storage/file_operations.cpp
 
     services/audit_service.cpp
+    services/auth_service.cpp
     services/case_service.cpp
     services/evidence_service.cpp
     services/integrity_service.cpp

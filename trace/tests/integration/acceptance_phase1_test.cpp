@@ -49,6 +49,24 @@
 namespace trace {
 namespace {
 
+/// Signs in the way the application does, so the acceptance tests exercise the
+/// real startup path rather than a permissive one that exists only for tests.
+/// Since local accounts arrived, UserContext grants no authority until a
+/// credential has been verified — a test that skipped this would be testing a
+/// TRACE nobody runs.
+bool signInForTest(trace::ui::ApplicationContext& context) {
+    constexpr const char* kUser = "acceptance";
+    constexpr const char* kPassword = "acceptance test password";
+    auto needed = context.auth().needsFirstRunSetup();
+    if (!needed) return false;
+    if (needed.value()) {
+        if (!context.auth().createFirstAdministrator(kUser, "Acceptance Operator", kPassword)) {
+            return false;
+        }
+    }
+    return context.auth().signIn(kUser, kPassword).ok();
+}
+
 bool waitFor(const std::function<bool()>& predicate, int timeoutMs = 30000) {
     QElapsedTimer timer;
     timer.start();
@@ -116,6 +134,7 @@ struct Workspace {
 
         workspace->context = std::make_unique<ui::ApplicationContext>();
         if (!workspace->context->initialise(workspace->dataRoot->path())) return nullptr;
+        if (!signInForTest(*workspace->context)) return nullptr;
 
         CaseDraft draft;
         draft.caseNumber = "CASE-0001";
@@ -368,6 +387,7 @@ TEST(AcceptancePhase1, AnalyzeVideoProducesReviewableResultsThatSurviveARestart)
     {
         ui::ApplicationContext context;
         ASSERT_TRUE(context.initialise(dataRootPath).ok());
+        ASSERT_TRUE(signInForTest(context));
         ui::MainWindow window(&context);
         window.show();
         ASSERT_TRUE(waitFor([&] { return window.isVisible(); }, 10000));
@@ -654,7 +674,8 @@ int main(int argc, char** argv) {
     // the same override an operator uses for a shared model directory, so the
     // test exercises the real lookup path rather than a test-only one.
     if (std::getenv("TRACE_MODEL_DIR") == nullptr) {
-        setenv("TRACE_MODEL_DIR", trace::testing::modelsDirectory().string().c_str(), 0);
+        trace::testing::setEnvironmentIfUnset("TRACE_MODEL_DIR",
+                                              trace::testing::modelsDirectory().string());
     }
     QApplication application(argc, argv);
     trace::ui::applyTraceTheme(application);

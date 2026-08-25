@@ -1,5 +1,6 @@
 // Persistence Test (Phase 0 acceptance §26): create, import, bookmark, close
 // everything, reopen, and confirm the case is exactly as it was left.
+#include <algorithm>
 #include <gtest/gtest.h>
 
 #include "core/security/sha256.h"

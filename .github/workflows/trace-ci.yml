@@ -1,0 +1,218 @@
+# TRACE CI — builds the C++ application and runs its own test suite.
+#
+# Separate from ci.yml, which tests the Python project in this repository and
+# knows nothing about TRACE. A green tick there says nothing about this code.
+#
+# Two platforms on purpose. Linux is where TRACE is developed; Windows is where
+# it is meant to be deployed, and until this workflow existed it had never been
+# compiled there at all.
+name: TRACE CI
+
+on:
+  push:
+    paths: ['trace/**', '.github/workflows/trace-ci.yml']
+  pull_request:
+    paths: ['trace/**', '.github/workflows/trace-ci.yml']
+  workflow_dispatch:
+
+env:
+  ONNXRUNTIME_VERSION: "1.17.3"
+  # The suite must not quietly shrink. Tests skip themselves when a fixture or a
+  # model is missing, so a run that lost its assets would still report success
+  # with far fewer cases. The floor below is checked after every run.
+  TRACE_MINIMUM_TESTS: "196"
+
+jobs:
+  linux:
+    name: Linux (Ubuntu 24.04, GCC)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ pkg-config \
+            qt6-base-dev qt6-multimedia-dev \
+            libavformat-dev libavcodec-dev libavutil-dev \
+            libswscale-dev libswresample-dev \
+            libsqlite3-dev libgtest-dev
+
+      - name: Cache ONNX Runtime
+        uses: actions/cache@v4
+        with:
+          path: trace/third_party/onnxruntime
+          key: onnxruntime-linux-${{ env.ONNXRUNTIME_VERSION }}
+
+      - name: Fetch ONNX Runtime
+        working-directory: trace
+        run: ./scripts/fetch_onnxruntime.sh
+
+      - name: Cache detection model
+        uses: actions/cache@v4
+        with:
+          path: trace/models
+          key: yolox-tiny-v1
+
+      # Fetched rather than committed: it is a 20 MB third-party binary with its
+      # own licence. The script verifies its SHA-256 before installing it, so a
+      # substituted model fails here rather than silently changing what the
+      # detection tests are testing.
+      - name: Fetch detection model
+        working-directory: trace
+        run: ./scripts/fetch_models.sh yolox-tiny
+
+      - name: Configure
+        working-directory: trace
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build
+        working-directory: trace
+        run: cmake --build build
+
+      # --timeout so a test that hangs is reported as that test failing, rather
+      # than silently consuming the job until the runner gives up. A hang and a
+      # slow machine look identical from outside; naming the case tells them
+      # apart.
+      - name: Test
+        working-directory: trace/build
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --output-on-failure --timeout 300
+
+      - name: Check the suite did not silently shrink
+        working-directory: trace/build
+        run: |
+          ran=$(ctest -N | sed -n 's/^Total Tests: //p')
+          echo "ctest reports ${ran} tests; floor is ${TRACE_MINIMUM_TESTS}"
+          if [ "${ran}" -lt "${TRACE_MINIMUM_TESTS}" ]; then
+            echo "::error::Only ${ran} tests were registered, below the floor of ${TRACE_MINIMUM_TESTS}."
+            exit 1
+          fi
+
+  windows:
+    name: Windows (Server 2022, MSVC)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.6.3'
+          modules: 'qtmultimedia'
+          cache: true
+
+      # LGPL, not GPL. TRACE links FFmpeg, so a GPL build would carry GPL
+      # obligations into TRACE itself the moment it is distributed. The LGPL
+      # shared build keeps that boundary at the DLL, which is what this project
+      # is written for. A GPL asset is never substituted silently: if no LGPL
+      # build exists the job fails and says why.
+      #
+      # Asset names are resolved from the releases API rather than hardcoded, so
+      # a renamed or retagged upload fails with a readable message instead of a
+      # 404 on a URL that was guessed.
+      - name: Fetch FFmpeg (LGPL shared, with headers)
+        shell: pwsh
+        run: |
+          $headers = @{ Authorization = "Bearer ${{ github.token }}" }
+          $release = Invoke-RestMethod -Headers $headers `
+            "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest"
+          $asset = $release.assets |
+            Where-Object { $_.name -like "*win64-lgpl-shared*.zip" } |
+            Sort-Object name -Descending |
+            Select-Object -First 1
+          if (-not $asset) {
+            throw ("No win64 lgpl-shared FFmpeg asset in the latest release. " +
+                   "A GPL build is not an acceptable substitute here: TRACE links " +
+                   "FFmpeg and would inherit GPL obligations on distribution.")
+          }
+          Write-Host "Using $($asset.name)"
+          Invoke-WebRequest $asset.browser_download_url -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-dist
+          $root = (Get-ChildItem ffmpeg-dist -Directory | Select-Object -First 1).FullName
+          "FFMPEG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # On PATH from here on. gtest_discover_tests runs each test executable
+          # during the build to enumerate its cases, which is before any
+          # post-build copy step could stage these DLLs beside it — without this
+          # the executables fail to start with STATUS_DLL_NOT_FOUND.
+          "$root\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Fetch ONNX Runtime
+        shell: pwsh
+        run: |
+          $version = "${{ env.ONNXRUNTIME_VERSION }}"
+          $url = "https://github.com/microsoft/onnxruntime/releases/download/v$version/onnxruntime-win-x64-$version.zip"
+          Invoke-WebRequest $url -OutFile onnxruntime.zip
+          Expand-Archive onnxruntime.zip -DestinationPath ort
+          $root = (Get-ChildItem ort -Directory | Select-Object -First 1).FullName
+          "ORT_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$root\lib" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Install SQLite and GoogleTest
+        shell: pwsh
+        run: vcpkg install sqlite3:x64-windows gtest:x64-windows
+
+      - name: Fetch detection model
+        shell: pwsh
+        working-directory: trace
+        run: |
+          $url = "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.onnx"
+          $expected = "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7"
+          New-Item -ItemType Directory -Force -Path models | Out-Null
+          Invoke-WebRequest $url -OutFile models/yolox_tiny.onnx
+          $actual = (Get-FileHash models/yolox_tiny.onnx -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $expected) {
+            throw "Model digest mismatch. Expected $expected, got $actual."
+          }
+          Write-Host "Model digest verified."
+
+      # No pkg-config here: this is the path FindFFmpegPortable.cmake takes when
+      # it has to locate the headers and import libraries itself.
+      - name: Configure
+        shell: pwsh
+        working-directory: trace
+        run: |
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DCMAKE_PREFIX_PATH="$env:FFMPEG_ROOT" `
+            -DTRACE_ONNXRUNTIME_ROOT="$env:ORT_ROOT"
+
+      - name: Build
+        working-directory: trace
+        run: cmake --build build
+
+      # The same DLLs, copied beside the executables so the built tree is
+      # self-contained rather than depending on PATH. Qt is deployed by
+      # windeployqt, and vcpkg stages its own during linking.
+      - name: Stage runtime libraries
+        shell: pwsh
+        working-directory: trace
+        run: |
+          Copy-Item "$env:FFMPEG_ROOT/bin/*.dll" build/bin -Force
+          Copy-Item "$env:ORT_ROOT/lib/*.dll" build/bin -Force
+          Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin/*.dll" build/bin -Force -ErrorAction SilentlyContinue
+          windeployqt build/bin/trace.exe
+
+      - name: Test
+        working-directory: trace/build
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --output-on-failure --timeout 300
+
+      - name: Check the suite did not silently shrink
+        shell: pwsh
+        working-directory: trace/build
+        run: |
+          $line = (ctest -N | Select-String '^Total Tests: ').ToString()
+          $ran = [int]($line -replace '^Total Tests: ', '')
+          Write-Host "ctest reports $ran tests; floor is $env:TRACE_MINIMUM_TESTS"
+          if ($ran -lt [int]$env:TRACE_MINIMUM_TESTS) {
+            Write-Host "::error::Only $ran tests were registered, below the floor of $env:TRACE_MINIMUM_TESTS."
+            exit 1
+          }

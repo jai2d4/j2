@@ -46,6 +46,7 @@ Status ApplicationContext::initialise(const std::filesystem::path& dataRoot) {
     annotationService_ = std::make_unique<AnnotationService>(database_, auditService_);
     derivedAssetService_ = std::make_shared<DerivedAssetService>(database_, *layout_, auditService_);
     frameExportService_ = std::make_unique<FrameExportService>(*layout_, derivedAssetService_);
+    waveformService_ = std::make_unique<WaveformService>(*layout_, derivedAssetService_);
     analysisService_ = std::make_shared<AnalysisService>(database_, auditService_);
     modelManager_ = std::make_unique<ModelManager>(ModelManager::defaultModelDirectory(dataRoot));
     reportService_ = std::make_unique<ReportService>(
@@ -61,8 +62,16 @@ Status ApplicationContext::initialise(const std::filesystem::path& dataRoot) {
     if (auto status = settingsService_->ensureDefaults(); !status) return status;
     Logger::instance().setLevel(settingsService_->logLevel());
 
-    // Register the workstation operator so audit rows can be joined to an
-    // account once multi-user deployments arrive.
+    authService_ = std::make_unique<AuthService>(database_, auditService_);
+
+    // Register the workstation operator so the audit rows written before anyone
+    // signs in — the migration, the application start — name somebody rather
+    // than nobody.
+    //
+    // This row carries no credential and so cannot be signed into. It also does
+    // not confer a session: UserContext is replaced only by AuthService::signIn,
+    // which is what stops the identity the operating system reports from being
+    // mistaken for an authenticated one.
     UserRepository users(database_);
     UserAccount account = UserContext::current().account();
     if (auto stored = users.upsert(account); stored) {
@@ -110,6 +119,8 @@ void ApplicationContext::shutdown() {
     logInfo(kComponent, "TRACE shutting down");
 
     frameExportService_.reset();
+    waveformService_.reset();
+    authService_.reset();
     settingsService_.reset();
     reportService_.reset();
     modelManager_.reset();

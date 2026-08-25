@@ -17,6 +17,7 @@ target_compile_definitions(trace_test_support PUBLIC
 # ------------------------------------------------------------------ unit tests
 add_executable(trace_unit_tests
     unit/sha256_test.cpp
+    unit/password_test.cpp
     unit/common_test.cpp
     unit/storage_layout_test.cpp
     unit/database_test.cpp
@@ -38,6 +39,8 @@ add_executable(trace_integration_tests
     integration/persistence_test.cpp
     integration/integrity_failure_test.cpp
     integration/media_test.cpp
+    integration/audio_test.cpp
+    integration/auth_test.cpp
     integration/detection_pipeline_test.cpp
     integration/report_export_test.cpp
 )
@@ -77,6 +80,17 @@ if(TRACE_BUILD_DESKTOP)
         DISCOVERY_TIMEOUT 60
         PROPERTIES LABELS unit)
 
+    # The sign-in gate, driven as a real dialog. Its own main() because it needs
+    # a QApplication and a data root per case.
+    add_executable(trace_sign_in_tests unit/sign_in_dialog_test.cpp)
+    target_link_libraries(trace_sign_in_tests PRIVATE
+        trace_ui trace_core trace_media trace_ai trace_analysis trace_reporting
+        Qt6::Core Qt6::Gui Qt6::Widgets GTest::gtest)
+    trace_apply_common_options(trace_sign_in_tests)
+    gtest_discover_tests(trace_sign_in_tests
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES LABELS unit)
+
     # Phase 1: object detection driven through the same real window.
     add_executable(trace_acceptance_phase1_test integration/acceptance_phase1_test.cpp)
     target_link_libraries(trace_acceptance_phase1_test PRIVATE
@@ -99,6 +113,20 @@ if(TRACE_BUILD_DESKTOP)
 
     add_test(NAME trace_acceptance_phase2 COMMAND trace_acceptance_phase2_test)
     set_tests_properties(trace_acceptance_phase2 PROPERTIES
+        LABELS acceptance
+        TIMEOUT 900
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Phase 3: audio — the waveform as a derived asset, and what the transport
+    # can honestly claim on the machine the test is running on.
+    add_executable(trace_acceptance_phase3_test integration/acceptance_phase3_test.cpp)
+    target_link_libraries(trace_acceptance_phase3_test PRIVATE
+        trace_test_support trace_ui trace_core trace_media trace_ai trace_analysis
+        trace_reporting Qt6::Core Qt6::Gui Qt6::Widgets GTest::gtest)
+    trace_apply_common_options(trace_acceptance_phase3_test)
+
+    add_test(NAME trace_acceptance_phase3 COMMAND trace_acceptance_phase3_test)
+    set_tests_properties(trace_acceptance_phase3 PROPERTIES
         LABELS acceptance
         TIMEOUT 900
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
