@@ -53,6 +53,10 @@ public:
 
     // ------------------------------------------------------------ credentials
 
+    /// Creates an account together with its credential. Separate from upsert(),
+    /// which is the identity path and must never write credential columns.
+    Status insertWithCredential(const StoredAccount& account);
+
     /// The same lookup, with the credential attached. Used only by
     /// authentication; everything else uses findByUsername.
     Result<std::optional<StoredAccount>> findStoredByUsername(const std::string& username);

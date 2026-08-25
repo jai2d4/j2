@@ -17,6 +17,7 @@ target_compile_definitions(trace_test_support PUBLIC
 # ------------------------------------------------------------------ unit tests
 add_executable(trace_unit_tests
     unit/sha256_test.cpp
+    unit/password_test.cpp
     unit/common_test.cpp
     unit/storage_layout_test.cpp
     unit/database_test.cpp

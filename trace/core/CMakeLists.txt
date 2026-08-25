@@ -54,6 +54,7 @@ add_library(trace_core STATIC
     storage/file_operations.cpp
 
     services/audit_service.cpp
+    services/auth_service.cpp
     services/case_service.cpp
     services/evidence_service.cpp
     services/integrity_service.cpp

@@ -1,6 +1,12 @@
+// Must precede <cstdlib>: this is what exposes rand_s in the Windows CRT.
+#if defined(_WIN32)
+#define _CRT_RAND_S
+#endif
+
 #include "core/security/password.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 
@@ -120,15 +126,19 @@ Result<std::vector<std::uint8_t>> randomBytes(std::size_t count) {
     std::vector<std::uint8_t> out(count, 0);
 
 #if defined(_WIN32)
-    // BCryptGenRandom is the documented CSPRNG on Windows. Declared here rather
-    // than pulling <windows.h> into a core header.
-    extern "C" long __stdcall BCryptGenRandom(void*, unsigned char*, unsigned long, unsigned long);
-    constexpr unsigned long kUseSystemPreferredRng = 0x00000002;
-    const long status = BCryptGenRandom(nullptr, out.data(),
-                                        static_cast<unsigned long>(count), kUseSystemPreferredRng);
-    if (status != 0) {
-        return ResultType::failure(ErrorCode::Internal,
-                                   "The system random number generator is unavailable");
+    // rand_s draws from the operating system's cryptographic generator
+    // (RtlGenRandom). Chosen over BCryptGenRandom because it needs no extra link
+    // library, and over std::random_device because that one's quality is
+    // implementation-defined and has been a fixed sequence on some toolchains.
+    for (std::size_t i = 0; i < count;) {
+        unsigned int value = 0;
+        if (rand_s(&value) != 0) {
+            return ResultType::failure(ErrorCode::Internal,
+                                       "The system random number generator is unavailable");
+        }
+        for (std::size_t byte = 0; byte < sizeof(value) && i < count; ++byte, ++i) {
+            out[i] = static_cast<std::uint8_t>((value >> (byte * 8)) & 0xFF);
+        }
     }
     return ResultType::success(std::move(out));
 #else

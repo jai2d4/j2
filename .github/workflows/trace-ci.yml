@@ -20,7 +20,7 @@ env:
   # The suite must not quietly shrink. Tests skip themselves when a fixture or a
   # model is missing, so a run that lost its assets would still report success
   # with far fewer cases. The floor below is checked after every run.
-  TRACE_MINIMUM_TESTS: "163"
+  TRACE_MINIMUM_TESTS: "174"
 
 jobs:
   linux:

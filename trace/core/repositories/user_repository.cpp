@@ -142,6 +142,41 @@ StoredAccount readStored(const Statement& stmt) {
 
 }  // namespace
 
+Status UserRepository::insertWithCredential(const StoredAccount& stored) {
+    auto prepared = database_->prepare(
+        "INSERT INTO users (id, username, display_name, role, active, created_at, "
+        "password_hash, password_salt, password_algorithm, password_iterations, "
+        "password_changed_at, must_change_password) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
+    if (!prepared) return Status(prepared.error());
+
+    std::optional<std::string> hash;
+    std::optional<std::string> salt;
+    std::optional<std::string> algorithm;
+    std::optional<std::int64_t> iterations;
+    if (stored.credential) {
+        hash = stored.credential->hashHex;
+        salt = stored.credential->saltHex;
+        algorithm = stored.credential->algorithm;
+        iterations = static_cast<std::int64_t>(stored.credential->iterations);
+    }
+
+    Statement stmt = prepared.take();
+    stmt.bind(1, stored.account.id)
+        .bind(2, stored.account.username)
+        .bind(3, stored.account.displayName)
+        .bind(4, std::string(toString(stored.account.role)))
+        .bind(5, stored.account.active)
+        .bind(6, stored.account.createdAt)
+        .bindOptional(7, hash)
+        .bindOptional(8, salt)
+        .bindOptional(9, algorithm)
+        .bindOptional(10, iterations)
+        .bindOptional(11, stored.passwordChangedAt)
+        .bind(12, stored.mustChangePassword ? 1 : 0);
+    return stmt.run();
+}
+
 Result<std::optional<StoredAccount>> UserRepository::findStoredByUsername(
     const std::string& username) {
     using ResultType = Result<std::optional<StoredAccount>>;
