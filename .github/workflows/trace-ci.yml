@@ -71,11 +71,15 @@ jobs:
         working-directory: trace
         run: cmake --build build
 
+      # --timeout so a test that hangs is reported as that test failing, rather
+      # than silently consuming the job until the runner gives up. A hang and a
+      # slow machine look identical from outside; naming the case tells them
+      # apart.
       - name: Test
         working-directory: trace/build
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --output-on-failure
+        run: ctest --output-on-failure --timeout 300
 
       - name: Check the suite did not silently shrink
         working-directory: trace/build
@@ -199,7 +203,7 @@ jobs:
         working-directory: trace/build
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --output-on-failure
+        run: ctest --output-on-failure --timeout 300
 
       - name: Check the suite did not silently shrink
         shell: pwsh
