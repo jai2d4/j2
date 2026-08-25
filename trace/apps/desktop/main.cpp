@@ -1,6 +1,7 @@
 // TRACE desktop entry point.
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QDialog>
 #include <QMessageBox>
 
 #include <cstdlib>
@@ -11,6 +12,7 @@
 #include "trace/trace_version.h"
 #include "ui/app/application_context.h"
 #include "ui/app/main_window.h"
+#include "ui/auth/sign_in_dialog.h"
 #include "ui/common/theme.h"
 
 int main(int argc, char** argv) {
@@ -52,6 +54,30 @@ int main(int argc, char** argv) {
                 .arg(QString::fromStdString(status.error().toString()),
                      QString::fromStdString(dataRoot.string())));
         return 1;
+    }
+
+    // Nothing opens until somebody has said who they are. TRACE's purpose is
+    // recording who did what to a piece of evidence, so an unattributed session
+    // is not a lesser version of the product — it is the wrong product.
+    {
+        trace::ui::SignInDialog gate(&context, trace::ui::SignInDialog::modeFor(&context));
+        if (gate.exec() != QDialog::Accepted) {
+            context.shutdown();
+            return 0;
+        }
+    }
+
+    // An account still holding a password an administrator issued replaces it
+    // before going any further: a credential somebody else knows cannot be the
+    // one another person's audited actions are attributed to.
+    while (context.auth().mustChangePassword()) {
+        trace::ui::SignInDialog change(&context,
+                                       trace::ui::SignInDialog::Mode::ChangePassword);
+        if (change.exec() != QDialog::Accepted) {
+            context.auth().signOut();
+            context.shutdown();
+            return 0;
+        }
     }
 
     trace::ui::MainWindow window(&context);

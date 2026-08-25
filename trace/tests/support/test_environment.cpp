@@ -1,6 +1,7 @@
 #include "tests/support/test_environment.h"
 
 #include <atomic>
+#include <cstdlib>
 #include <stdexcept>
 
 #include "core/common/logging.h"
@@ -100,6 +101,16 @@ bool realDetectionModelAvailable() {
     ModelManager manager(modelsDirectory());
     auto validation = manager.validate(*descriptor);
     return validation.ok() && validation.value().usable();
+}
+
+
+void setEnvironmentIfUnset(const char* name, const std::string& value) {
+    if (std::getenv(name) != nullptr) return;
+#if defined(_WIN32)
+    _putenv_s(name, value.c_str());
+#else
+    setenv(name, value.c_str(), 0);
+#endif
 }
 
 }  // namespace trace::testing
