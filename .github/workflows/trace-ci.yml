@@ -131,6 +131,11 @@ jobs:
           Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-dist
           $root = (Get-ChildItem ffmpeg-dist -Directory | Select-Object -First 1).FullName
           "FFMPEG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # On PATH from here on. gtest_discover_tests runs each test executable
+          # during the build to enumerate its cases, which is before any
+          # post-build copy step could stage these DLLs beside it — without this
+          # the executables fail to start with STATUS_DLL_NOT_FOUND.
+          "$root\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Fetch ONNX Runtime
         shell: pwsh
@@ -141,6 +146,7 @@ jobs:
           Expand-Archive onnxruntime.zip -DestinationPath ort
           $root = (Get-ChildItem ort -Directory | Select-Object -First 1).FullName
           "ORT_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$root\lib" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install SQLite and GoogleTest
         shell: pwsh
@@ -177,8 +183,9 @@ jobs:
         working-directory: trace
         run: cmake --build build
 
-      # The DLLs the test executables load at run time: FFmpeg, ONNX Runtime and
-      # SQLite are all shared here, and Qt is deployed by windeployqt.
+      # The same DLLs, copied beside the executables so the built tree is
+      # self-contained rather than depending on PATH. Qt is deployed by
+      # windeployqt, and vcpkg stages its own during linking.
       - name: Stage runtime libraries
         shell: pwsh
         working-directory: trace
