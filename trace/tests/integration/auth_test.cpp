@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 
+#include "core/common/uuid.h"
 #include "core/repositories/user_repository.h"
 #include "core/security/user_context.h"
 #include "core/services/auth_service.h"
@@ -246,6 +247,69 @@ TEST(AuthTest, ManagingAccountsRequiresTheAdministratorRole) {
         << "an analyst who can promote themselves is not an analyst";
     EXPECT_FALSE(fixture.auth->setActive(analyst.value().id, false).ok());
     EXPECT_FALSE(fixture.auth->resetPassword(analyst.value().id, "a new long password").ok());
+}
+
+TEST(AuthTest, FirstRunClaimsAnIdentityThatWasRecordedButNeverGivenAPassword) {
+    AuthFixture fixture("trace-auth-claim");
+
+    // What an installation predating local accounts looks like, and what TRACE
+    // still writes at startup so pre-sign-in audit rows name somebody: a users
+    // row with no credential, which nobody can sign in as.
+    UserRepository users(fixture.stack.database);
+    UserAccount unclaimed;
+    unclaimed.id = generateUuid();
+    unclaimed.username = "operator";
+    unclaimed.displayName = "Workstation operator";
+    unclaimed.role = UserRole::Viewer;
+    ASSERT_TRUE(users.upsert(unclaimed).ok());
+
+    // It does not count as an account that can be signed into, so setup still runs.
+    auto needed = fixture.auth->needsFirstRunSetup();
+    ASSERT_TRUE(needed.ok());
+    EXPECT_TRUE(needed.value());
+
+    // And setup can take that name rather than refusing because it is "taken" by
+    // a row nobody could ever use.
+    auto claimed =
+        fixture.auth->createFirstAdministrator("operator", "A. Analyst", kGoodPassword);
+    ASSERT_TRUE(claimed.ok()) << claimed.error().message();
+    EXPECT_EQ(claimed.value().role, UserRole::Administrator);
+
+    // The same row was claimed, not a second one created — so audit history
+    // already attributed to that identity stays attached to it.
+    auto all = users.list();
+    ASSERT_TRUE(all.ok());
+    int matching = 0;
+    for (const auto& account : all.value()) {
+        if (account.username == "operator") ++matching;
+    }
+    EXPECT_EQ(matching, 1) << "first-run setup duplicated the identity instead of claiming it";
+
+    auto stored = users.findStoredByUsername("operator");
+    ASSERT_TRUE(stored.ok());
+    ASSERT_TRUE(stored.value().has_value());
+    EXPECT_EQ(stored.value()->account.id, unclaimed.id);
+    EXPECT_TRUE(fixture.auth->signIn("operator", kGoodPassword).ok());
+}
+
+TEST(AuthTest, AnAccountThatAlreadyHasAPasswordIsNeverSilentlyOverwritten) {
+    AuthFixture fixture("trace-auth-noclobber");
+    ASSERT_TRUE(fixture.auth->createFirstAdministrator("admin", "Admin", kGoodPassword).ok());
+    ASSERT_TRUE(fixture.auth->signIn("admin", kGoodPassword).ok());
+
+    // Claiming is only ever for an identity with no credential. Reusing a name
+    // that has one has to fail, or creating an account would be a way to take
+    // over somebody else's.
+    auto duplicate = fixture.auth->createAccount("admin", "Impostor", UserRole::Analyst,
+                                                 "some other long password");
+    ASSERT_FALSE(duplicate.ok());
+    EXPECT_EQ(duplicate.error().code(), ErrorCode::InvalidArgument);
+
+    // The original password still works and the role is unchanged.
+    fixture.auth->signOut();
+    auto signedIn = fixture.auth->signIn("admin", kGoodPassword);
+    ASSERT_TRUE(signedIn.ok());
+    EXPECT_EQ(signedIn.value().role, UserRole::Administrator);
 }
 
 TEST(AuthTest, CredentialsSurviveARestart) {

@@ -73,15 +73,47 @@ Result<UserAccount> AuthService::createAccount(const std::string& username,
         return ResultType::failure(ErrorCode::InvalidArgument, "A username is required");
     }
 
-    auto existing = users_->findByUsername(username);
+    auto existing = users_->findStoredByUsername(username);
     if (!existing) return ResultType(existing.error());
-    if (existing.value()) {
+    if (existing.value() && existing.value()->hasCredential()) {
         return ResultType::failure(ErrorCode::InvalidArgument,
                                    "An account with that username already exists");
     }
 
     auto credential = password::hash(plaintext);
     if (!credential) return ResultType(credential.error());
+
+    // A row with no credential is an identity that was recorded but never
+    // claimed — the workstation operator TRACE registers at startup so that
+    // audit rows written before anyone signs in name somebody. Giving it a
+    // password claims it, rather than refusing because the name is taken by a
+    // row nobody could ever sign in as.
+    //
+    // This is also the upgrade path for an installation predating local
+    // accounts: its existing operator row becomes a real account, and the audit
+    // history already attributed to that name stays attached to it.
+    if (existing.value()) {
+        const std::string at = nowIso8601Utc();
+        const std::string id = existing.value()->account.id;
+        if (auto status = users_->setCredential(id, credential.value(), at, false); !status) {
+            return ResultType(status.error());
+        }
+        if (auto status = users_->setRole(id, role); !status) return ResultType(status.error());
+
+        UserAccount claimed = existing.value()->account;
+        claimed.role = role;
+        if (!displayName.empty()) claimed.displayName = displayName;
+
+        AuditRecord record;
+        record.action = AuditAction::AccountCreated;
+        record.description = "Account claimed for " + username;
+        record.details = JsonValue::object()
+                             .set("username", username)
+                             .set("role", std::string(toString(role)))
+                             .set("claimed_existing_identity", true);
+        audit_->record(record);
+        return ResultType::success(std::move(claimed));
+    }
 
     StoredAccount stored;
     stored.account.id = generateUuid();
@@ -193,7 +225,7 @@ Result<UserAccount> AuthService::establishSession(const StoredAccount& stored) {
 
     UserAccount account = stored.account;
     account.lastSeenAt = at;
-    UserContext::current().setAccount(account);
+    UserContext::current().setAuthenticatedAccount(account);
     mustChangePassword_ = stored.mustChangePassword;
 
     AuditRecord record;
@@ -216,7 +248,7 @@ void AuthService::signOut() {
         record.details = JsonValue::object().set("username", account.username);
         audit_->record(record);
     }
-    UserContext::current().setAccount(UserAccount{});
+    UserContext::current().clear();
     mustChangePassword_ = false;
 }
 

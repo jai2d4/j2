@@ -40,6 +40,24 @@
 namespace trace {
 namespace {
 
+/// Signs in the way the application does, so the acceptance tests exercise the
+/// real startup path rather than a permissive one that exists only for tests.
+/// Since local accounts arrived, UserContext grants no authority until a
+/// credential has been verified — a test that skipped this would be testing a
+/// TRACE nobody runs.
+bool signInForTest(trace::ui::ApplicationContext& context) {
+    constexpr const char* kUser = "acceptance";
+    constexpr const char* kPassword = "acceptance test password";
+    auto needed = context.auth().needsFirstRunSetup();
+    if (!needed) return false;
+    if (needed.value()) {
+        if (!context.auth().createFirstAdministrator(kUser, "Acceptance Operator", kPassword)) {
+            return false;
+        }
+    }
+    return context.auth().signIn(kUser, kPassword).ok();
+}
+
 bool waitFor(const std::function<bool()>& predicate, int timeoutMs = 60000) {
     QElapsedTimer timer;
     timer.start();
@@ -95,6 +113,7 @@ struct Workspace {
 
         workspace->context = std::make_unique<ui::ApplicationContext>();
         if (!workspace->context->initialise(workspace->dataRoot->path())) return nullptr;
+        if (!signInForTest(*workspace->context)) return nullptr;
 
         CaseDraft draft;
         draft.caseNumber = "CASE-0001";
@@ -257,6 +276,7 @@ TEST(AcceptancePhase2, ExportsABundleThatVerifiesIndependentlyAndSurvivesARestar
     {
         ui::ApplicationContext context;
         ASSERT_TRUE(context.initialise(dataRootPath).ok());
+        ASSERT_TRUE(signInForTest(context));
 
         auto cases = context.cases().listCases();
         ASSERT_TRUE(cases.ok());
