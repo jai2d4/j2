@@ -80,6 +80,17 @@ if(TRACE_BUILD_DESKTOP)
         DISCOVERY_TIMEOUT 60
         PROPERTIES LABELS unit)
 
+    # The sign-in gate, driven as a real dialog. Its own main() because it needs
+    # a QApplication and a data root per case.
+    add_executable(trace_sign_in_tests unit/sign_in_dialog_test.cpp)
+    target_link_libraries(trace_sign_in_tests PRIVATE
+        trace_ui trace_core trace_media trace_ai trace_analysis trace_reporting
+        Qt6::Core Qt6::Gui Qt6::Widgets GTest::gtest)
+    trace_apply_common_options(trace_sign_in_tests)
+    gtest_discover_tests(trace_sign_in_tests
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES LABELS unit)
+
     # Phase 1: object detection driven through the same real window.
     add_executable(trace_acceptance_phase1_test integration/acceptance_phase1_test.cpp)
     target_link_libraries(trace_acceptance_phase1_test PRIVATE

@@ -41,6 +41,7 @@ public:
     QLineEdit* usernameField() const { return username_; }
     QLineEdit* passwordField() const { return password_; }
     QLineEdit* confirmField() const { return confirm_; }
+    QLineEdit* confirmNewField() const { return confirmNew_; }
     QPushButton* submitButton() const { return submit_; }
     QString lastError() const { return lastError_; }
 
