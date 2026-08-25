@@ -1,6 +1,7 @@
 #include "media/audio/waveform_service.h"
 
 #include <fstream>
+#include <iterator>
 #include <system_error>
 
 #include "core/common/uuid.h"

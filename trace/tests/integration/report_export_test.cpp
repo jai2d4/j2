@@ -1,6 +1,7 @@
 // Phase 2 — exhibit bundles: writing them, verifying them, and refusing to present a
 // failed export as a successful one.
 #include <gtest/gtest.h>
+#include <iterator>
 
 #include <cstring>
 #include <fstream>

@@ -4,6 +4,7 @@
 #include <array>
 #include <cctype>
 #include <cstdio>
+#include <iterator>
 
 namespace trace {
 namespace {

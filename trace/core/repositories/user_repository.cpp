@@ -103,4 +103,142 @@ Result<std::vector<UserAccount>> UserRepository::list() {
     return ResultType::success(std::move(accounts));
 }
 
+// ---------------------------------------------------------------- credentials
+
+namespace {
+
+constexpr const char* kStoredColumns =
+    "id, username, display_name, role, active, created_at, last_seen_at, "
+    "password_hash, password_salt, password_algorithm, password_iterations, "
+    "password_changed_at, must_change_password, failed_attempts, locked_until, last_login_at";
+
+StoredAccount readStored(const Statement& stmt) {
+    StoredAccount stored;
+    stored.account = readUser(stmt);
+
+    // A credential is reconstructed only when every part of it is present. A row
+    // carrying a hash but no algorithm is treated as having no credential at all
+    // rather than being verified under an assumed one.
+    const auto hash = stmt.columnOptionalText(7);
+    const auto salt = stmt.columnOptionalText(8);
+    const auto algorithm = stmt.columnOptionalText(9);
+    const auto iterations = stmt.columnOptionalInt64(10);
+    if (hash && salt && algorithm && iterations && *iterations > 0) {
+        password::StoredPassword credential;
+        credential.hashHex = *hash;
+        credential.saltHex = *salt;
+        credential.algorithm = *algorithm;
+        credential.iterations = static_cast<std::uint32_t>(*iterations);
+        stored.credential = credential;
+    }
+
+    stored.passwordChangedAt = stmt.columnOptionalText(11);
+    stored.mustChangePassword = stmt.columnInt64(12) != 0;
+    stored.failedAttempts = static_cast<int>(stmt.columnInt64(13));
+    stored.lockedUntil = stmt.columnOptionalText(14);
+    stored.lastLoginAt = stmt.columnOptionalText(15);
+    return stored;
+}
+
+}  // namespace
+
+Result<std::optional<StoredAccount>> UserRepository::findStoredByUsername(
+    const std::string& username) {
+    using ResultType = Result<std::optional<StoredAccount>>;
+    auto prepared = database_->prepare(std::string("SELECT ") + kStoredColumns +
+                                       " FROM users WHERE username = ? LIMIT 1;");
+    if (!prepared) return ResultType(prepared.error());
+    Statement stmt = prepared.take();
+    stmt.bind(1, username);
+    auto stepped = stmt.step();
+    if (!stepped) return ResultType(stepped.error());
+    if (!stepped.value()) return ResultType::success(std::nullopt);
+    return ResultType::success(readStored(stmt));
+}
+
+Result<std::optional<StoredAccount>> UserRepository::findStoredById(const std::string& id) {
+    using ResultType = Result<std::optional<StoredAccount>>;
+    auto prepared = database_->prepare(std::string("SELECT ") + kStoredColumns +
+                                       " FROM users WHERE id = ? LIMIT 1;");
+    if (!prepared) return ResultType(prepared.error());
+    Statement stmt = prepared.take();
+    stmt.bind(1, id);
+    auto stepped = stmt.step();
+    if (!stepped) return ResultType(stepped.error());
+    if (!stepped.value()) return ResultType::success(std::nullopt);
+    return ResultType::success(readStored(stmt));
+}
+
+Result<std::int64_t> UserRepository::countUsableAccounts() {
+    using ResultType = Result<std::int64_t>;
+    auto prepared = database_->prepare(
+        "SELECT COUNT(*) FROM users WHERE active = 1 AND password_hash IS NOT NULL "
+        "AND password_salt IS NOT NULL AND password_algorithm IS NOT NULL;");
+    if (!prepared) return ResultType(prepared.error());
+    Statement stmt = prepared.take();
+    auto stepped = stmt.step();
+    if (!stepped) return ResultType(stepped.error());
+    if (!stepped.value()) return ResultType::success(0);
+    return ResultType::success(stmt.columnInt64(0));
+}
+
+Status UserRepository::setCredential(const std::string& userId,
+                                     const password::StoredPassword& credential,
+                                     const std::string& changedAt, bool mustChange) {
+    // Setting a credential also clears any lockout. Someone who has just proved
+    // they can set the password is not the attacker the lockout was guarding
+    // against, and leaving them locked out would be a denial of service.
+    auto prepared = database_->prepare(
+        "UPDATE users SET password_hash = ?, password_salt = ?, password_algorithm = ?, "
+        "password_iterations = ?, password_changed_at = ?, must_change_password = ?, "
+        "failed_attempts = 0, locked_until = NULL WHERE id = ?;");
+    if (!prepared) return Status(prepared.error());
+
+    Statement stmt = prepared.take();
+    stmt.bind(1, credential.hashHex)
+        .bind(2, credential.saltHex)
+        .bind(3, credential.algorithm)
+        .bind(4, static_cast<std::int64_t>(credential.iterations))
+        .bind(5, changedAt)
+        .bind(6, mustChange ? 1 : 0)
+        .bind(7, userId);
+    return stmt.run();
+}
+
+Status UserRepository::setRole(const std::string& userId, UserRole role) {
+    auto prepared = database_->prepare("UPDATE users SET role = ? WHERE id = ?;");
+    if (!prepared) return Status(prepared.error());
+    Statement stmt = prepared.take();
+    stmt.bind(1, std::string(toString(role))).bind(2, userId);
+    return stmt.run();
+}
+
+Status UserRepository::setActive(const std::string& userId, bool active) {
+    auto prepared = database_->prepare("UPDATE users SET active = ? WHERE id = ?;");
+    if (!prepared) return Status(prepared.error());
+    Statement stmt = prepared.take();
+    stmt.bind(1, active).bind(2, userId);
+    return stmt.run();
+}
+
+Status UserRepository::recordFailedAttempt(const std::string& userId, int attempts,
+                                           const std::optional<std::string>& lockedUntil) {
+    auto prepared =
+        database_->prepare("UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?;");
+    if (!prepared) return Status(prepared.error());
+    Statement stmt = prepared.take();
+    stmt.bind(1, static_cast<std::int64_t>(attempts)).bindOptional(2, lockedUntil).bind(3, userId);
+    return stmt.run();
+}
+
+Status UserRepository::recordSuccessfulLogin(const std::string& userId, const std::string& at) {
+    auto prepared = database_->prepare(
+        "UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login_at = ?, "
+        "last_seen_at = ? WHERE id = ?;");
+    if (!prepared) return Status(prepared.error());
+    Statement stmt = prepared.take();
+    stmt.bind(1, at).bind(2, at).bind(3, userId);
+    return stmt.run();
+}
+
 }  // namespace trace
