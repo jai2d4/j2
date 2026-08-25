@@ -189,6 +189,12 @@ Stated plainly, because a security feature that is oversold is a liability.
   checkable by hash; their confidentiality depends on the operating system.
 - **There are no sessions or timeouts.** Signing in lasts until the application
   closes. An unlocked workstation left running is an unlocked TRACE.
+- **An unclaimed identity can be taken over by whoever runs first-run setup.**
+  That is the point — it is how an existing installation's operator row becomes
+  a real account without losing its audit history — but it means the window
+  between installing TRACE and completing setup is a window in which anybody at
+  the keyboard becomes the administrator. Complete setup before the machine is
+  left unattended.
 - **There is no password recovery.** An administrator can reset another account. A
   lone administrator who forgets their password has no route back in, by design —
   a recovery mechanism is also an attack surface, and a single-workstation
@@ -203,7 +209,7 @@ Stated plainly, because a security feature that is oversold is a liability.
 
 ## 7. Coverage
 
-`tests/unit/password_test.cpp` (11) and `tests/integration/auth_test.cpp` (13).
+`tests/unit/password_test.cpp` (11) and `tests/integration/auth_test.cpp` (15).
 
 **Cryptography** — RFC 4231 HMAC vectors including the long-key branch; PBKDF2
 vectors including multi-block output; the work factor is not silently lowered; the
@@ -221,4 +227,7 @@ against even the correct password; a success clears the counter; an issued passw
 must be replaced before it attributes anything; changing one requires the current
 one; a weak password is refused and creates nothing as a side effect; an inactive
 account cannot sign in; managing accounts requires the Administrator role;
-credentials survive a restart.
+credentials survive a restart; first-run setup claims an identity that was
+recorded but never given a password — the upgrade path for an installation
+predating accounts — while an account that already has one is never silently
+overwritten.
