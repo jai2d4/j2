@@ -60,6 +60,14 @@ public:
     WaveformService& waveforms() const { return *waveformService_; }
     WorkspaceKeys& keys() const { return *keys_; }
 
+    /// The accelerator to decode with, or empty for software.
+    ///
+    /// Resolved here rather than at each call site so the viewer and an analysis
+    /// run cannot disagree about what is enabled. Returns empty whenever the
+    /// setting is off, no device opened, or this build has no accelerator —
+    /// three different reasons for the same correct answer.
+    std::string decodeDevice() const;
+
     /// What TRACE found in the data directory. Populated by initialise(), and
     /// by inspectWorkspace() before it.
     const WorkspaceState& workspace() const { return workspace_; }

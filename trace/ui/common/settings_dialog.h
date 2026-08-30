@@ -4,6 +4,7 @@
 
 class QComboBox;
 class QLineEdit;
+class QCheckBox;
 class QSpinBox;
 
 namespace trace::ui {
@@ -30,6 +31,7 @@ private:
     QComboBox* defaultSpeed_ = nullptr;
     QSpinBox* jumpSeconds_ = nullptr;
     QSpinBox* volume_ = nullptr;
+    QCheckBox* hardware_ = nullptr;
 };
 
 }  // namespace trace::ui

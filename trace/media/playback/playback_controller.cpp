@@ -78,6 +78,11 @@ void PlaybackController::setEvidenceKey(std::optional<crypto::SecretKey> key) {
     evidenceKey_ = std::move(key);
 }
 
+void PlaybackController::setHardwareDevice(std::string device) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    hardwareDevice_ = std::move(device);
+}
+
 void PlaybackController::open(const std::filesystem::path& file) {
     setState(PlaybackState::Opening);
     post(Command{CommandType::Open, file, 0, 0, 1.0});
@@ -203,12 +208,18 @@ void PlaybackController::handleCommand(const Command& command) {
             }
             const crypto::SecretKey* key = nullptr;
             std::optional<crypto::SecretKey> keyCopy;
+            std::string device;
             {
                 std::lock_guard<std::mutex> guard(mutex_);
                 keyCopy = evidenceKey_;
+                device = hardwareDevice_;
             }
             if (keyCopy) key = &*keyCopy;
-            auto opened = VideoDecoder::open(command.path, key);
+            // openAccelerated falls back to software by itself when the device
+            // cannot take this file, and info().hardwareDevice reports what
+            // actually happened rather than what was asked for.
+            auto opened = device.empty() ? VideoDecoder::open(command.path, key)
+                                         : VideoDecoder::openAccelerated(command.path, device, key);
             if (!opened) {
                 logError(kComponent, "Unable to open media",
                          JsonValue::object()

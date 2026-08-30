@@ -14,6 +14,7 @@ extern "C" {
 #include "core/common/logging.h"
 #include "media/ffmpeg/encrypted_io.h"
 #include "media/ffmpeg/ffmpeg_support.h"
+#include "media/ffmpeg/hardware_decode.h"
 
 namespace trace {
 namespace {
@@ -27,12 +28,20 @@ struct VideoDecoder::Impl {
     // Declared before `format`: the decrypting IO context must outlive the
     // format context that points at it, and members are destroyed in reverse.
     EncryptedMediaIo io;
+    // Likewise before `codec`: the device context is referenced by the codec
+    // context, and releasing the device first would leave a dangling reference
+    // for avcodec_free_context to walk.
+    hwaccel::Session hardware;
     AVFormatContext* format = nullptr;
     AVCodecContext* codec = nullptr;
     AVStream* stream = nullptr;
     AVFrame* frame = nullptr;
     AVPacket* packet = nullptr;
     SwsContext* scaler = nullptr;
+    /// Where a hardware frame is read back into system memory. Reused across
+    /// frames rather than allocated per frame, which at 25 frames a second is
+    /// the difference between a buffer and a treadmill.
+    AVFrame* transferred = nullptr;
     int scalerWidth = 0;
     int scalerHeight = 0;
     AVPixelFormat scalerFormat = AV_PIX_FMT_NONE;
@@ -43,6 +52,7 @@ struct VideoDecoder::Impl {
     ~Impl() {
         if (scaler != nullptr) sws_freeContext(scaler);
         if (packet != nullptr) av_packet_free(&packet);
+        if (transferred != nullptr) av_frame_free(&transferred);
         if (frame != nullptr) av_frame_free(&frame);
         if (codec != nullptr) avcodec_free_context(&codec);
         if (format != nullptr) avformat_close_input(&format);
@@ -53,6 +63,22 @@ VideoDecoder::~VideoDecoder() = default;
 
 Result<std::unique_ptr<VideoDecoder>> VideoDecoder::open(const std::filesystem::path& file,
                                                          const crypto::SecretKey* key) {
+    return openInternal(file, key, {}, /*allowHardware=*/false);
+}
+
+Result<std::unique_ptr<VideoDecoder>> VideoDecoder::openAccelerated(
+    const std::filesystem::path& file, const std::string& deviceName,
+    const crypto::SecretKey* key) {
+    return openInternal(file, key, deviceName, /*allowHardware=*/true);
+}
+
+bool VideoDecoder::usingHardware() const {
+    return impl_ != nullptr && impl_->hardware.active();
+}
+
+Result<std::unique_ptr<VideoDecoder>> VideoDecoder::openInternal(
+    const std::filesystem::path& file, const crypto::SecretKey* key,
+    const std::string& requestedDevice, bool allowHardware) {
     using ResultType = Result<std::unique_ptr<VideoDecoder>>;
     initialiseFFmpeg();
 
@@ -101,6 +127,26 @@ Result<std::unique_ptr<VideoDecoder>> VideoDecoder::open(const std::filesystem::
     // single-threaded per frame boundary; throughput work belongs to later
     // phases where GPU decode is introduced.
     impl.codec->thread_count = 1;
+
+    // The accelerator is attached before avcodec_open2 and released if opening
+    // fails, so a device that is present but unusable for this file costs one
+    // failed open rather than a decoder that half works.
+    if (allowHardware) {
+        const std::string device =
+            requestedDevice.empty() ? hwaccel::preferredDeviceFor(codec) : requestedDevice;
+        if (device.empty()) {
+            logInfo(kComponent, "No usable hardware decoder for this codec; using software",
+                    JsonValue::object().set("codec", avcodec_get_name(impl.stream->codecpar->codec_id)));
+        } else if (auto attached = impl.hardware.attach(impl.codec, codec, device); !attached) {
+            // An ordinary condition on a mixed fleet, not a failure: the file
+            // still plays, and what actually decoded it is recorded below.
+            logInfo(kComponent, "Hardware decoding unavailable for this file; using software",
+                    JsonValue::object()
+                        .set("device", device)
+                        .set("detail", attached.error().toString()));
+        }
+    }
+
     rc = avcodec_open2(impl.codec, codec, nullptr);
     if (rc < 0) {
         return ResultType::failure(
@@ -112,7 +158,8 @@ Result<std::unique_ptr<VideoDecoder>> VideoDecoder::open(const std::filesystem::
 
     impl.frame = av_frame_alloc();
     impl.packet = av_packet_alloc();
-    if (impl.frame == nullptr || impl.packet == nullptr) {
+    impl.transferred = av_frame_alloc();
+    if (impl.frame == nullptr || impl.packet == nullptr || impl.transferred == nullptr) {
         return ResultType::failure(ErrorCode::Internal, "Unable to allocate decoding buffers");
     }
 
@@ -129,6 +176,10 @@ Result<std::unique_ptr<VideoDecoder>> VideoDecoder::open(const std::filesystem::
     if (const char* pixelFormat = av_get_pix_fmt_name(impl.codec->pix_fmt); pixelFormat != nullptr) {
         info.pixelFormat = pixelFormat;
     }
+    // What decoded it, not what was asked for. Everything downstream that
+    // records provenance reads this field, so a request that fell back to
+    // software cannot be reported as hardware.
+    info.hardwareDevice = impl.hardware.deviceName();
     if (impl.stream->start_time != AV_NOPTS_VALUE) {
         info.startTimeUs = av_rescale_q(impl.stream->start_time, impl.stream->time_base, kMicroseconds);
     }
@@ -183,13 +234,23 @@ Result<VideoFrameData> VideoDecoder::nextFrame() {
     for (;;) {
         const int receive = avcodec_receive_frame(impl.codec, impl.frame);
         if (receive == 0) {
-            VideoFrameData data;
-            data.width = impl.frame->width;
-            data.height = impl.frame->height;
-            data.keyFrame = impl.frame->flags & AV_FRAME_FLAG_KEY;
+            // A hardware frame lives in device memory and has no pixels to
+            // scale. This is where it comes back, or where the attempt fails
+            // loudly rather than producing the previous frame again.
+            AVFrame* usable = impl.frame;
+            if (auto moved = impl.hardware.transfer(impl.frame, impl.transferred, &usable);
+                !moved) {
+                av_frame_unref(impl.frame);
+                return ResultType(moved.error());
+            }
 
-            std::int64_t timestamp = impl.frame->best_effort_timestamp;
-            if (timestamp == AV_NOPTS_VALUE) timestamp = impl.frame->pts;
+            VideoFrameData data;
+            data.width = usable->width;
+            data.height = usable->height;
+            data.keyFrame = usable->flags & AV_FRAME_FLAG_KEY;
+
+            std::int64_t timestamp = usable->best_effort_timestamp;
+            if (timestamp == AV_NOPTS_VALUE) timestamp = usable->pts;
             if (timestamp == AV_NOPTS_VALUE) {
                 data.presentationUs = 0;
             } else {
@@ -197,9 +258,9 @@ Result<VideoFrameData> VideoDecoder::nextFrame() {
                     av_rescale_q(timestamp, impl.stream->time_base, kMicroseconds) - info_.startTimeUs;
                 if (data.presentationUs < 0) data.presentationUs = 0;
             }
-            if (impl.frame->duration > 0) {
+            if (usable->duration > 0) {
                 data.durationUs =
-                    av_rescale_q(impl.frame->duration, impl.stream->time_base, kMicroseconds);
+                    av_rescale_q(usable->duration, impl.stream->time_base, kMicroseconds);
             }
             // A frame index is only meaningful when the timing is regular.
             if (info_.frameRateMode == FrameRateMode::ConstantSuspected &&
@@ -208,15 +269,15 @@ Result<VideoFrameData> VideoDecoder::nextFrame() {
                     static_cast<double>(data.presentationUs) * info_.averageFrameRate / 1'000'000.0));
             }
 
-            const auto sourceFormat = static_cast<AVPixelFormat>(impl.frame->format);
-            if (impl.scaler == nullptr || impl.scalerWidth != impl.frame->width ||
-                impl.scalerHeight != impl.frame->height || impl.scalerFormat != sourceFormat) {
+            const auto sourceFormat = static_cast<AVPixelFormat>(usable->format);
+            if (impl.scaler == nullptr || impl.scalerWidth != usable->width ||
+                impl.scalerHeight != usable->height || impl.scalerFormat != sourceFormat) {
                 if (impl.scaler != nullptr) sws_freeContext(impl.scaler);
-                impl.scaler = sws_getContext(impl.frame->width, impl.frame->height, sourceFormat,
-                                             impl.frame->width, impl.frame->height, AV_PIX_FMT_RGB24,
+                impl.scaler = sws_getContext(usable->width, usable->height, sourceFormat,
+                                             usable->width, usable->height, AV_PIX_FMT_RGB24,
                                              SWS_BILINEAR, nullptr, nullptr, nullptr);
-                impl.scalerWidth = impl.frame->width;
-                impl.scalerHeight = impl.frame->height;
+                impl.scalerWidth = usable->width;
+                impl.scalerHeight = usable->height;
                 impl.scalerFormat = sourceFormat;
             }
             if (impl.scaler == nullptr) {
@@ -224,14 +285,15 @@ Result<VideoFrameData> VideoDecoder::nextFrame() {
                                            "Unable to convert the decoded frame for display");
             }
 
-            const int stride = impl.frame->width * 3;
-            data.rgb.resize(static_cast<std::size_t>(stride) * impl.frame->height);
+            const int stride = usable->width * 3;
+            data.rgb.resize(static_cast<std::size_t>(stride) * usable->height);
             std::uint8_t* destination[4] = {data.rgb.data(), nullptr, nullptr, nullptr};
             int destinationStride[4] = {stride, 0, 0, 0};
-            sws_scale(impl.scaler, impl.frame->data, impl.frame->linesize, 0, impl.frame->height,
+            sws_scale(impl.scaler, usable->data, usable->linesize, 0, usable->height,
                       destination, destinationStride);
 
             av_frame_unref(impl.frame);
+            if (usable != impl.frame) av_frame_unref(impl.transferred);
             return ResultType::success(std::move(data));
         }
         if (receive == AVERROR_EOF) {

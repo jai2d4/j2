@@ -53,7 +53,7 @@ analyst's.
 | Audio decoding and resampling (libswresample) | Working |
 | Waveform envelope on the timeline, generated as a derived asset with provenance | Working |
 | Volume and mute, persisted; neither alters evidence | Working |
-| **Hardware-accelerated decode** | **Not implemented** — setting exists and is disabled; TRACE decodes in software |
+| **Hardware-accelerated decode** | **Written, unproven** — device enumeration and the software fallback are tested; the accelerated path has never run on a GPU. Off by default, and exported exhibits always decode in software. See `docs/HARDWARE_DECODE.md` |
 | **GPU inference (CUDA)** | **Written and guarded, never executed here** — this environment has no GPU; see `docs/PHASE1_TESTING.md` |
 | **Face recognition, identity, plates, tracking, re-identification** | **Not implemented, by design** — see `docs/ROADMAP.md` |
 
@@ -275,6 +275,7 @@ as importantly, what was not.
 | [docs/PHASE3_TESTING.md](docs/PHASE3_TESTING.md) | Phase 3 coverage and the gap where a sound card would be |
 | [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) | How passwords are stored, why not SHA-256, and what local accounts do *not* protect |
 | [docs/ENCRYPTION.md](docs/ENCRYPTION.md) | What is encrypted, the key hierarchy, and §6: what encryption at rest does *not* protect |
+| [docs/HARDWARE_DECODE.md](docs/HARDWARE_DECODE.md) | Why GPU decode is off by default, where it is deliberately not used, and how to check it on your own hardware |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What Phase 2+ adds and the extension points waiting for it |
 
 ---

@@ -144,6 +144,13 @@ Result<AnalysisOutcome> AnalysisPipeline::execute(const DetectionAnalysisRequest
                                   .set("max_detections_per_frame",
                                        static_cast<std::int64_t>(request.maximumDetectionsPerFrame))
                                   .set("device_requested", toString(request.device))
+                                  // The decoder is opened further down, so this
+                                  // is what was asked for. What actually decoded
+                                  // is a warning on the run when the two differ,
+                                  // which is where an operator would look for it.
+                                  .set("decoder_requested", request.hardwareDevice.empty()
+                                                                ? std::string("software")
+                                                                : request.hardwareDevice)
                                   .dump();
 
     auto startedRun = analysis_->startRun(draft);
@@ -223,13 +230,28 @@ Result<AnalysisOutcome> AnalysisPipeline::execute(const DetectionAnalysisRequest
     }
 
     // --------------------------------------------------------- open the media
-    auto opened = VideoDecoder::open(request.mediaPath, request.mediaKey);
+    auto opened = request.hardwareDevice.empty()
+                      ? VideoDecoder::open(request.mediaPath, request.mediaKey)
+                      : VideoDecoder::openAccelerated(request.mediaPath, request.hardwareDevice,
+                                                      request.mediaKey);
     if (!opened) {
         provider->shutdown();
         return finish(AnalysisRunStatus::Failed, opened.error().toString());
     }
     auto decoder = opened.take();
     const DecoderStreamInfo streamInfo = decoder->info();
+
+    // An accelerator that was asked for and did not take the file is worth
+    // saying out loud. The run still completes and its results are sound; what
+    // an operator must not be left with is the impression it ran on hardware.
+    if (!request.hardwareDevice.empty() && streamInfo.hardwareDevice.empty()) {
+        warnings.emplace_back("Hardware decoding was requested (" + request.hardwareDevice +
+                              ") but is not usable for this file; frames were decoded in "
+                              "software.");
+    } else if (!streamInfo.hardwareDevice.empty()) {
+        warnings.emplace_back("Frames were decoded by the " + streamInfo.hardwareDevice +
+                              " accelerator rather than in software.");
+    }
 
     outcome.run.sourceWidth = streamInfo.width;
     outcome.run.sourceHeight = streamInfo.height;

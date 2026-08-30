@@ -64,7 +64,7 @@ Phase 1 — it is a real menu action now.
 | Another analysis *type* (audio events, scene classification) | `analysis_runs.analysis_type`, its own results table keyed to the run, a new pipeline in `analysis/` |
 | More timeline lanes | `TimelineWidget::setTracks` already draws point and range markers on arbitrary rows; it knows nothing about detections |
 | Working copies and transcodes | `working/` directory and `DerivedAssetType::WorkingCopy` |
-| GPU decode | Decoder is isolated behind `VideoDecoder`; the setting exists and is disabled |
+| GPU decode | Built, off by default. Enumeration and fallback are tested; the accelerated path has never run on a GPU. See `docs/HARDWARE_DECODE.md` |
 | Multi-user deployments | `users` table, `UserRole`/`Permission` gate already enforced in services, including detection review |
 | Reports and exhibits | `reports/` and `exports/` directories; the run record answers what a report must cite |
 | Multi-camera synchronisation | Positions are real presentation timestamps throughout |
@@ -91,6 +91,12 @@ Still open from this area:
   pipeline in `analysis/`.
 
 ### Phase 4 — then, in rough order
+
+- **Prove hardware decode on real hardware** — the accelerated path is written and has
+  never executed. `hwaccel::verifyMatchesSoftware` and the
+  `HardwareDecodeOnRealHardware` test exist to be run on a machine with a GPU; until
+  somebody does, "written and unproven" is the accurate description and the setting stays
+  off by default.
 
 - ~~**Detection review at scale**~~ — built. Keyboard review with auto-advance, bulk
   confirm/reject across a filter, and a review-progress indicator per run. A sweep is

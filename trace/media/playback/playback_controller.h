@@ -82,6 +82,16 @@ public:
     /// the previous file is still closing — and a key that arrived with only
     /// the first command would not be there for the second.
     void setEvidenceKey(std::optional<crypto::SecretKey> key);
+
+    /// Decode through a named accelerator when one is available.
+    ///
+    /// Empty means software, which is the default. Playback is the one place an
+    /// accelerator earns its keep — scrubbing through hours of 4K is decoder
+    /// bound and nothing else — and it is also the place where a difference of
+    /// one pixel value costs nothing, because what is on screen is a view rather
+    /// than an exhibit. Frame export deliberately does not use this: see
+    /// docs/HARDWARE_DECODE.md.
+    void setHardwareDevice(std::string device);
     void close();
 
     void play();
@@ -118,6 +128,8 @@ private:
     /// Guarded by the same mutex as the command queue: set on the GUI thread,
     /// read on the worker.
     std::optional<crypto::SecretKey> evidenceKey_;
+    /// Guarded by the same mutex as the command queue.
+    std::string hardwareDevice_;
 
     struct Command {
         CommandType type = CommandType::Play;
