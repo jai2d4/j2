@@ -20,6 +20,7 @@
 #include "core/services/case_service.h"
 #include "core/services/derived_asset_service.h"
 #include "core/services/evidence_service.h"
+#include "core/services/auth_service.h"
 #include "core/services/integrity_service.h"
 #include "core/settings/settings_service.h"
 #include "core/storage/storage_layout.h"
@@ -56,6 +57,7 @@ public:
     DerivedAssetService& derivedAssets() const { return *derivedAssetService_; }
     FrameExportService& frameExports() const { return *frameExportService_; }
     WaveformService& waveforms() const { return *waveformService_; }
+    AuthService& auth() const { return *authService_; }
     AnalysisService& analysis() const { return *analysisService_; }
     ReportService& reports() const { return *reportService_; }
     std::shared_ptr<AnalysisService> analysisService() const { return analysisService_; }
@@ -120,6 +122,7 @@ private:
     std::shared_ptr<DerivedAssetService> derivedAssetService_;
     std::unique_ptr<FrameExportService> frameExportService_;
     std::unique_ptr<WaveformService> waveformService_;
+    std::unique_ptr<AuthService> authService_;
     std::shared_ptr<AnalysisService> analysisService_;
     std::unique_ptr<ModelManager> modelManager_;
     std::unique_ptr<ReportService> reportService_;

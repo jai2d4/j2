@@ -44,19 +44,57 @@ struct UserAccount {
 };
 
 /// Identity of the operator whose actions are recorded in the audit trail.
+///
+/// Identity and authority are separate here. Naming somebody in an audit row is
+/// not the same as having established that they are who the row says, and the
+/// two used to be conflated: the context started life holding the workstation
+/// user with Administrator authority, from a time when TRACE trusted whoever
+/// opened it. Once accounts exist that default is a standing grant to anyone who
+/// reaches a code path before sign-in.
+///
+/// So permissions are withheld until AuthService has actually verified a
+/// credential. setAccount() names an operator and grants nothing; only
+/// setAuthenticatedAccount() confers authority, and only AuthService calls it.
 class UserContext {
 public:
     static UserContext& current();
 
     const UserAccount& account() const { return account_; }
-    void setAccount(UserAccount account) { account_ = std::move(account); }
+
+    /// Names the operator without granting anything — used for the audit rows
+    /// written before anyone has signed in, such as the schema migration.
+    void setAccount(UserAccount account) {
+        account_ = std::move(account);
+        authenticated_ = false;
+    }
+
+    /// Names the operator *and* confers their role's authority. Called only
+    /// after a credential has been verified.
+    void setAuthenticatedAccount(UserAccount account) {
+        account_ = std::move(account);
+        authenticated_ = true;
+    }
+
+    void clear() {
+        account_ = UserAccount{};
+        authenticated_ = false;
+    }
+
+    bool authenticated() const { return authenticated_; }
 
     const std::string& actorName() const { return account_.username; }
-    bool can(Permission permission) const { return roleHasPermission(account_.role, permission); }
+
+    /// False for everything until somebody has signed in. A default-constructed
+    /// UserAccount is nominally an Analyst, so without this check "nobody" would
+    /// hold an analyst's authority the moment a session ended.
+    bool can(Permission permission) const {
+        return authenticated_ && roleHasPermission(account_.role, permission);
+    }
 
 private:
     UserContext();
     UserAccount account_;
+    bool authenticated_ = false;
 };
 
 /// Best-effort operating-system user name, used to seed the local account so

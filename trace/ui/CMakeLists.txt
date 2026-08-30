@@ -14,13 +14,14 @@ add_library(trace_ui STATIC
     common/detection_overlay.cpp
 
     app/application_context.cpp
+    auth/sign_in_dialog.cpp
+    audio/audio_output.cpp
     app/main_window.cpp
 
     case_browser/case_dialog.cpp
     case_browser/case_browser_panel.cpp
     evidence_browser/evidence_panel.cpp
     viewer/video_view.cpp
-    audio/audio_output.cpp
     viewer/playback_bridge.cpp
     viewer/viewer_panel.cpp
     timeline/timeline_widget.cpp

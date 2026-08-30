@@ -88,10 +88,12 @@ UserContext::UserContext() {
     account_.id = generateUuid();
     account_.username = detectOperatingSystemUser();
     account_.displayName = account_.username;
-    // Phase 0 is a single-operator local deployment: the workstation user holds
-    // full local authority. Multi-user deployments will load this from the
-    // users table instead.
-    account_.role = UserRole::Administrator;
+    // Named, but holding nothing: authenticated_ stays false until AuthService
+    // verifies a credential, so this identity can label a pre-sign-in audit row
+    // without authorising anything. The role recorded here is the least
+    // privileged one, so that even a future caller who wrongly marks this
+    // context authenticated does not thereby become an administrator.
+    account_.role = UserRole::Viewer;
     account_.createdAt = nowIso8601Utc();
     account_.lastSeenAt = account_.createdAt;
 }

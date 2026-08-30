@@ -100,8 +100,9 @@ Still open from this area:
 - **Working copies** — a proportionate transcode for awkward codecs, recorded as a
   derived asset with its parameters, so analysis runs on a known format while the
   original stays untouched.
-- **Local accounts** — password hashing and login on top of the existing `users` table
-  and permission gate.
+- ~~**Local accounts**~~ — built. PBKDF2-HMAC-SHA256, lockout, an audited sign-in and
+  a role gate with teeth. See `docs/AUTHENTICATION.md`, whose §6 lists what it
+  deliberately does not protect.
 - **Encrypted storage** — the managed layout and relative paths already make a per-case
   encrypted container feasible without touching the domain.
 

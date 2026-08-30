@@ -17,6 +17,7 @@ target_compile_definitions(trace_test_support PUBLIC
 # ------------------------------------------------------------------ unit tests
 add_executable(trace_unit_tests
     unit/sha256_test.cpp
+    unit/password_test.cpp
     unit/common_test.cpp
     unit/storage_layout_test.cpp
     unit/database_test.cpp
@@ -39,6 +40,7 @@ add_executable(trace_integration_tests
     integration/integrity_failure_test.cpp
     integration/media_test.cpp
     integration/audio_test.cpp
+    integration/auth_test.cpp
     integration/detection_pipeline_test.cpp
     integration/report_export_test.cpp
 )
@@ -75,6 +77,17 @@ if(TRACE_BUILD_DESKTOP)
     # The binary selects the offscreen platform for itself when none is set, so
     # both discovery and execution work on a machine with no display.
     gtest_discover_tests(trace_ui_unit_tests
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES LABELS unit)
+
+    # The sign-in gate, driven as a real dialog. Its own main() because it needs
+    # a QApplication and a data root per case.
+    add_executable(trace_sign_in_tests unit/sign_in_dialog_test.cpp)
+    target_link_libraries(trace_sign_in_tests PRIVATE
+        trace_ui trace_core trace_media trace_ai trace_analysis trace_reporting
+        Qt6::Core Qt6::Gui Qt6::Widgets GTest::gtest)
+    trace_apply_common_options(trace_sign_in_tests)
+    gtest_discover_tests(trace_sign_in_tests
         DISCOVERY_TIMEOUT 60
         PROPERTIES LABELS unit)
 
