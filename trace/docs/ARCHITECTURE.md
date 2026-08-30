@@ -86,6 +86,13 @@ a decoder and a private thread, and calls back from that thread. `ui/viewer/Play
 is the only place those callbacks become Qt signals, via `QMetaObject::invokeMethod` with
 `Qt::QueuedConnection`.
 
+Audio adds a third thread and inverts which clock is authoritative. `ui/audio/AudioOutput`
+runs a `QAudioSink` on its own thread, and `PlaybackController::setClockSource()` lets the
+video pacer follow the device's position rather than the steady clock while sound is
+playing. The arithmetic that turns a device's count into a media position lives in
+`media/audio/AudioClock` — no Qt, so it is testable on a machine with no sound card. See
+`docs/AUDIO.md`.
+
 Two hazards this design has already hit, both now covered by fixes and tests:
 
 - A background task that finishes *after* the context has shut down must not call into
@@ -111,7 +118,7 @@ concatenates user text into SQL.
 | A new entity | Migration, model, repository, then a service that owns its rules and writes audit records |
 | A new evidence operation (clip, transcode, enhancement) | Write into the case's managed storage, then register through `DerivedAssetService::registerAsset` so it inherits hashing, provenance and audit |
 | A new analysis capability | Implement `IAnalysisProvider`, register it; persist findings as derived assets/operations. Do not add vendor code to `core` |
-| A new timeline row (detections, events, audio) | Push another `TimelineTrack` — `TimelineWidget` already draws point and range markers and knows nothing about bookmarks |
+| A new timeline row (detections, events) | Push another `TimelineTrack` — `TimelineWidget` draws point markers, range markers and amplitude envelopes, and knows nothing about bookmarks |
 | A new UI panel | Take `ApplicationContext*`; call services; keep queries out of paint and event handlers |
 
 ## Conventions

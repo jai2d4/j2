@@ -89,15 +89,15 @@ SettingsDialog::SettingsDialog(ApplicationContext* context, QWidget* parent)
     volume_ = new QSpinBox(playbackBox);
     volume_->setRange(0, 100);
     volume_->setValue(static_cast<int>(context_->settings().getInt(settings_keys::kPlaybackVolume, 80)));
-    volume_->setEnabled(false);
     playbackForm->addRow(QStringLiteral("Default speed"), defaultSpeed_);
     playbackForm->addRow(QStringLiteral("Jump interval"), jumpSeconds_);
     playbackForm->addRow(QStringLiteral("Volume"), volume_);
     playbackForm->addRow(QString(),
                          reservedNote(playbackBox, QStringLiteral(
-                             "Audio playback is not implemented in Phase 0; the stored volume is "
-                             "kept for when it is. Audio stream metadata is extracted and shown in "
-                             "the inspector.")));
+                             "Audio plays at normal speed only. At any other speed the track is "
+                             "silenced rather than pitch-shifted, because a pitch-shifted voice "
+                             "misrepresents the recording. Volume and muting change what leaves "
+                             "the sound card; neither alters the evidence.")));
     layout->addWidget(playbackBox);
 
     // -------------------------------------------------------- reserved: media
@@ -203,6 +203,8 @@ void SettingsDialog::save() {
            QStringLiteral("Default speed"));
     record(settings.setInt(settings_keys::kPlaybackJumpSeconds, jumpSeconds_->value()),
            QStringLiteral("Jump interval"));
+    record(settings.setInt(settings_keys::kPlaybackVolume, volume_->value()),
+           QStringLiteral("Volume"));
     record(settings.setString(settings_keys::kLogLevel, logLevel_->currentText().toStdString()),
            QStringLiteral("Logging level"));
 

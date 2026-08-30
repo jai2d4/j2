@@ -46,6 +46,7 @@ Status ApplicationContext::initialise(const std::filesystem::path& dataRoot) {
     annotationService_ = std::make_unique<AnnotationService>(database_, auditService_);
     derivedAssetService_ = std::make_shared<DerivedAssetService>(database_, *layout_, auditService_);
     frameExportService_ = std::make_unique<FrameExportService>(*layout_, derivedAssetService_);
+    waveformService_ = std::make_unique<WaveformService>(*layout_, derivedAssetService_);
     analysisService_ = std::make_shared<AnalysisService>(database_, auditService_);
     modelManager_ = std::make_unique<ModelManager>(ModelManager::defaultModelDirectory(dataRoot));
     reportService_ = std::make_unique<ReportService>(
@@ -110,6 +111,7 @@ void ApplicationContext::shutdown() {
     logInfo(kComponent, "TRACE shutting down");
 
     frameExportService_.reset();
+    waveformService_.reset();
     settingsService_.reset();
     reportService_.reset();
     modelManager_.reset();

@@ -275,6 +275,7 @@ const char* toString(DerivedAssetType type) {
         case DerivedAssetType::WorkingCopy:    return "working_copy";
         case DerivedAssetType::Clip:           return "clip";
         case DerivedAssetType::AudioExtract:   return "audio_extract";
+        case DerivedAssetType::Waveform:       return "waveform";
         case DerivedAssetType::AnalysisOutput: return "analysis_output";
         case DerivedAssetType::Report:         return "report";
         case DerivedAssetType::Other:          return "other";
@@ -289,6 +290,7 @@ const char* toDisplayString(DerivedAssetType type) {
         case DerivedAssetType::WorkingCopy:    return "Working copy";
         case DerivedAssetType::Clip:           return "Clip";
         case DerivedAssetType::AudioExtract:   return "Audio extract";
+        case DerivedAssetType::Waveform:       return "Waveform";
         case DerivedAssetType::AnalysisOutput: return "Analysis output";
         case DerivedAssetType::Report:         return "Report";
         case DerivedAssetType::Other:          return "Other";
@@ -302,6 +304,7 @@ DerivedAssetType derivedAssetTypeFromString(const std::string& text, DerivedAsse
     if (text == "working_copy") return DerivedAssetType::WorkingCopy;
     if (text == "clip") return DerivedAssetType::Clip;
     if (text == "audio_extract") return DerivedAssetType::AudioExtract;
+    if (text == "waveform") return DerivedAssetType::Waveform;
     if (text == "analysis_output") return DerivedAssetType::AnalysisOutput;
     if (text == "report") return DerivedAssetType::Report;
     if (text == "other") return DerivedAssetType::Other;

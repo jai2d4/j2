@@ -3,8 +3,11 @@
 #include <QMainWindow>
 
 #include <memory>
+#include <optional>
+#include <string>
 
 #include "core/models/evidence.h"
+#include "media/audio/waveform.h"
 
 class QAction;
 class QLabel;
@@ -137,6 +140,10 @@ private:
 
     std::unique_ptr<BackgroundTask> frameExportTask_;
     std::unique_ptr<BackgroundTask> thumbnailTask_;
+    std::unique_ptr<BackgroundTask> waveformTask_;
+    /// Envelope for the item in the viewer, once it has been built.
+    std::optional<Waveform> waveform_;
+    std::string waveformEvidenceId_;
     qint64 lastFrameNumber_ = -1;
 };
 

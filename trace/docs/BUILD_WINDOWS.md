@@ -32,6 +32,7 @@ setx VCPKG_ROOT C:\vcpkg
 ```powershell
 C:\vcpkg\vcpkg install `
     qtbase[core,gui,widgets,concurrent]:x64-windows `
+    qtmultimedia:x64-windows `
     ffmpeg[avformat,avcodec,avfilter,swscale,swresample]:x64-windows `
     sqlite3:x64-windows `
     gtest:x64-windows
@@ -39,7 +40,9 @@ C:\vcpkg\vcpkg install `
 
 Qt is the largest item; expect a long first build. A prebuilt Qt from the official
 online installer works equally well — point CMake at it with
-`-DCMAKE_PREFIX_PATH="C:/Qt/6.6.3/msvc2019_64"` and drop `qtbase` from the vcpkg line.
+`-DCMAKE_PREFIX_PATH="C:/Qt/6.6.3/msvc2019_64"` and drop `qtbase` and `qtmultimedia`
+from the vcpkg line. An installer-based Qt needs the **Qt Multimedia** component ticked;
+it is not part of the default selection.
 
 ## 3. Configure and build
 
@@ -80,8 +83,15 @@ C:\Qt\6.6.3\msvc2019_64\bin\windeployqt.exe trace\build\bin\trace.exe
 ```
 
 With vcpkg's Qt, `applocal.ps1` runs automatically at install time; for a manual copy the
-minimum set is `Qt6Core.dll`, `Qt6Gui.dll`, `Qt6Widgets.dll`, `platforms\qwindows.dll`,
-plus the FFmpeg and SQLite DLLs from `vcpkg\installed\x64-windows\bin`.
+minimum set is `Qt6Core.dll`, `Qt6Gui.dll`, `Qt6Widgets.dll`, `Qt6Multimedia.dll`,
+`Qt6Network.dll` (which Qt Multimedia links), `platforms\qwindows.dll`, the
+`multimedia\` plugin directory, plus the FFmpeg and SQLite DLLs from
+`vcpkg\installed\x64-windows\bin`. `windeployqt` handles all of this; the list matters
+only for a manual copy.
+
+Without the multimedia plugin directory the application still runs — it reports no audio
+output device and disables the transport, which is the same path a machine with no sound
+card takes.
 
 ## 6. First run
 

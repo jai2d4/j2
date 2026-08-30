@@ -144,21 +144,18 @@ ViewerPanel::ViewerPanel(ApplicationContext* context, QWidget* parent)
 
     transportLayout->addStretch();
 
-    // Audio transport is present but explicitly inactive in Phase 0: TRACE
-    // decodes and reports audio metadata, but does not render audio yet, and
-    // the controls say so instead of pretending.
+    // Audio transport. Enabled per item by refreshAudioControls(): an item with
+    // no track, or a machine with no output device, leaves these off and says
+    // which in the tooltip rather than looking broken.
     muteButton_ = makeTransportButton(transport, QStringLiteral("🔇"), QString());
+    muteButton_->setCheckable(true);
     muteButton_->setEnabled(false);
     volumeSlider_ = new QSlider(Qt::Horizontal, transport);
     volumeSlider_->setRange(0, 100);
-    volumeSlider_->setValue(80);
+    volumeSlider_->setValue(
+        static_cast<int>(context_->settings().getInt(settings_keys::kPlaybackVolume, 80)));
     volumeSlider_->setFixedWidth(90);
     volumeSlider_->setEnabled(false);
-    const QString audioTooltip =
-        QStringLiteral("Audio playback is not available in Phase 0. Audio stream details are shown "
-                       "in the inspector.");
-    muteButton_->setToolTip(audioTooltip);
-    volumeSlider_->setToolTip(audioTooltip);
     transportLayout->addWidget(muteButton_);
     transportLayout->addWidget(volumeSlider_);
 
@@ -235,6 +232,17 @@ ViewerPanel::ViewerPanel(ApplicationContext* context, QWidget* parent)
     connect(speedBox_, &QComboBox::currentIndexChanged, this, [this](int index) {
         playback_->setSpeed(speedBox_->itemData(index).toDouble());
     });
+    connect(volumeSlider_, &QSlider::valueChanged, this, [this](int value) {
+        // Changes what leaves the sound card and what the next item opens at.
+        // Neither touches the recording.
+        playback_->setVolume(value);
+        context_->settings().setInt(settings_keys::kPlaybackVolume, value);
+    });
+    connect(muteButton_, &QToolButton::toggled, this, [this](bool muted) {
+        playback_->setMuted(muted);
+        context_->settings().setBool(settings_keys::kPlaybackMuted, muted);
+        muteButton_->setText(muted ? QStringLiteral("🔇") : QStringLiteral("🔊"));
+    });
     connect(frameExportButton_, &QPushButton::clicked, this,
             [this] { emit frameExportRequested(); });
     connect(bookmarkButton_, &QPushButton::clicked, this, [this] { emit bookmarkRequested(); });
@@ -259,7 +267,10 @@ void ViewerPanel::applyControlsEnabled(bool enabled) {
     speedBox_->setEnabled(enabled);
     frameExportButton_->setEnabled(enabled);
     bookmarkButton_->setEnabled(enabled);
-    if (!enabled) setDetectionOverlayAvailable(false);
+    if (!enabled) {
+        setDetectionOverlayAvailable(false);
+        refreshAudioControls();
+    }
 }
 
 void ViewerPanel::openEvidence(const Evidence& evidence) {
@@ -276,7 +287,9 @@ void ViewerPanel::openEvidence(const Evidence& evidence) {
     jumpForwardButton_->setText(jumpText + QStringLiteral(" »"));
 
     if (evidence.mediaType != MediaType::Video && evidence.mediaType != MediaType::Image) {
-        view_->clear(QStringLiteral("%1 is %2 — the Phase 0 viewer plays video only.")
+        // Audio-only items are decoded and their waveform is built, but the viewer
+        // itself shows a picture; there is no picture here to show.
+        view_->clear(QStringLiteral("%1 is %2 — the viewer plays video.")
                          .arg(QString::fromStdString(evidence.evidenceNumber),
                               QString::fromUtf8(toDisplayString(evidence.mediaType)).toLower()));
         applyControlsEnabled(false);
@@ -294,6 +307,15 @@ void ViewerPanel::openEvidence(const Evidence& evidence) {
     const auto path = context_->evidence().absolutePath(evidence);
     playback_->open(QString::fromStdString(path.string()));
 
+    // open() probes the track, so by here the answer is known and the transport
+    // can be labelled correctly the first time it is drawn.
+    const bool startMuted = context_->settings().getBool(settings_keys::kPlaybackMuted, false);
+    muteButton_->setChecked(startMuted);
+    muteButton_->setText(startMuted ? QStringLiteral("🔇") : QStringLiteral("🔊"));
+    playback_->setMuted(startMuted);
+    playback_->setVolume(volumeSlider_->value());
+    refreshAudioControls();
+
     const double defaultSpeed =
         context_->settings().getDouble(settings_keys::kPlaybackDefaultSpeed, 1.0);
     for (int i = 0; i < speedBox_->count(); ++i) {
@@ -302,6 +324,36 @@ void ViewerPanel::openEvidence(const Evidence& evidence) {
             break;
         }
     }
+}
+
+void ViewerPanel::refreshAudioControls() {
+    const bool available = playback_->isOpen() || playback_->hasAudio();
+    const bool usable = playback_->hasAudio();
+    muteButton_->setEnabled(usable);
+    volumeSlider_->setEnabled(usable);
+
+    if (usable) {
+        const QString tip = QStringLiteral(
+            "Audio plays at normal speed only. At any other speed the track is silenced "
+            "rather than pitch-shifted, because a pitch-shifted voice misrepresents the "
+            "recording.");
+        muteButton_->setToolTip(tip);
+        volumeSlider_->setToolTip(tip);
+        return;
+    }
+
+    // Say which of the two reasons it is. "No audio" is a fact about the evidence;
+    // "no device" is a fact about this machine, and an analyst needs to be able to
+    // tell them apart before concluding a recording is silent.
+    QString reason = playback_->audioUnavailableReason();
+    if (reason.isEmpty()) {
+        reason = available ? QStringLiteral("This item has no audio track.")
+                           : QStringLiteral("No evidence is open.");
+    }
+    reason += QStringLiteral(" Audio stream details, when there are any, are shown in the "
+                             "inspector.");
+    muteButton_->setToolTip(reason);
+    volumeSlider_->setToolTip(reason);
 }
 
 void ViewerPanel::setDetections(std::vector<DetectionOverlayItem> detections,
