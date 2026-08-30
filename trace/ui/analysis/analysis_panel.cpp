@@ -539,6 +539,7 @@ DetectionAnalysisRequest AnalysisPanel::buildRequest() const {
     request.evidenceNumber = evidence_->evidenceNumber;
     request.mediaPath = context_->evidence().absolutePath(*evidence_);
     request.evidenceSha256 = evidence_->sha256;
+    request.hardwareDevice = context_->decodeDevice();
     request.providerId = providerBox_->currentData().toString().toStdString();
     request.modelId = modelBox_->currentData().toString().toStdString();
     request.device = devicePreferenceFromString(deviceBox_->currentData().toString().toStdString());

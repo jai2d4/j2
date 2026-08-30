@@ -75,6 +75,14 @@ Result<DerivedAsset> FrameExportService::exportFrame(const ExportRequest& reques
             .set("source_codec", request.decoderInfo.codecName)
             .set("source_pixel_format", request.decoderInfo.pixelFormat)
             .set("frame_rate_mode", toString(request.decoderInfo.frameRateMode))
+            // Which decoder produced these pixels. A hardware decoder is a
+            // different implementation of the same standard, so an exhibit that
+            // came through one has to say so — otherwise two frames exported
+            // from the same recording on differently configured workstations
+            // could differ with nothing in the record to explain it.
+            .set("decoder", request.decoderInfo.hardwareDevice.empty()
+                                ? std::string("software")
+                                : "hardware:" + request.decoderInfo.hardwareDevice)
             .set("key_frame", request.frame->keyFrame);
     if (request.frame->frameNumber) {
         registration.parameters.set("source_frame_number", *request.frame->frameNumber);

@@ -31,6 +31,10 @@ struct DetectionAnalysisRequest {
     /// a borrowed pointer for the length of the run, like every other decode
     /// path; analysis never writes to the evidence, encrypted or not.
     const crypto::SecretKey* mediaKey = nullptr;
+    /// Accelerator to decode with, or empty for software. Sampling a long
+    /// recording is decoder bound, so this is where it matters most after
+    /// playback. What actually decoded is recorded on the run.
+    std::string hardwareDevice;
 
     std::string providerId;   ///< registry id, e.g. "onnxruntime"
     std::string modelId;      ///< catalogue id; empty when the provider needs no artefact

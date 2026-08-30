@@ -28,6 +28,9 @@ public:
     /// The key for the evidence about to be opened, when the workspace stores
     /// it encrypted. Set before open().
     void setEvidenceKey(std::optional<crypto::SecretKey> key);
+
+    /// Accelerator for playback, or empty for software.
+    void setHardwareDevice(const std::string& device);
     void close();
 
     void play();

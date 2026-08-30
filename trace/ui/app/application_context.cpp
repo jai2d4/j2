@@ -1,5 +1,7 @@
 #include "ui/app/application_context.h"
 
+#include "media/ffmpeg/hardware_decode.h"
+
 #include "ai/detection/detection_provider_registry.h"
 #include "ui/reports/qt_document_renderer.h"
 #include "core/common/logging.h"
@@ -123,6 +125,14 @@ Status ApplicationContext::initialise(const std::filesystem::path& dataRoot) {
 
     initialised_ = true;
     return Status::success();
+}
+
+std::string ApplicationContext::decodeDevice() const {
+    if (!isInitialised()) return {};
+    if (!settingsService_->getBool(settings_keys::kHardwareAcceleration, false)) return {};
+    const auto usable = hwaccel::availableDevices();
+    if (usable.empty()) return {};
+    return usable.front().name;
 }
 
 WorkspaceState ApplicationContext::inspectWorkspace(const std::filesystem::path& dataRoot) {

@@ -74,6 +74,10 @@ void PlaybackBridge::setEvidenceKey(std::optional<crypto::SecretKey> key) {
     controller_->setEvidenceKey(std::move(key));
 }
 
+void PlaybackBridge::setHardwareDevice(const std::string& device) {
+    controller_->setHardwareDevice(device);
+}
+
 void PlaybackBridge::open(const QString& absolutePath) {
     // Probed before the engine is told to open, so that by the time mediaOpened
     // reaches the viewer, hasAudio() already knows the answer and the transport

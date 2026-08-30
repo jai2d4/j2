@@ -8,6 +8,7 @@ add_library(trace_media STATIC
     ffmpeg/video_decoder.cpp
     ffmpeg/audio_decoder.cpp
     ffmpeg/encrypted_io.cpp
+    ffmpeg/hardware_decode.cpp
     audio/audio_clock.cpp
     audio/waveform.cpp
     audio/waveform_service.cpp

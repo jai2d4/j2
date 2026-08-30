@@ -314,6 +314,9 @@ void ViewerPanel::openEvidence(const Evidence& evidence) {
         return;
     }
     const CaseKeyHandle key = caseKey.take();
+    // Read per item rather than cached: the setting can change in the settings
+    // dialog between one recording and the next.
+    playback_->setHardwareDevice(context_->decodeDevice());
     playback_->setEvidenceKey(key.present()
                                   ? std::optional<crypto::SecretKey>(*key.get())
                                   : std::nullopt);

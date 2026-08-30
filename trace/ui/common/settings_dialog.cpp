@@ -21,6 +21,7 @@
 #include "media/ffmpeg/ffmpeg_support.h"
 #include "media/playback/playback_controller.h"
 #include "trace/trace_version.h"
+#include "media/ffmpeg/hardware_decode.h"
 #include "ui/app/application_context.h"
 #include "ui/common/theme.h"
 #include "ui/common/display_utils.h"
@@ -103,15 +104,56 @@ SettingsDialog::SettingsDialog(ApplicationContext* context, QWidget* parent)
     // -------------------------------------------------------- reserved: media
     auto* acceleration = new QGroupBox(QStringLiteral("ACCELERATION AND ANALYSIS"), this);
     auto* accelerationLayout = new QVBoxLayout(acceleration);
-    auto* hardware = new QCheckBox(QStringLiteral("Use hardware-accelerated decoding"), acceleration);
-    hardware->setChecked(context_->settings().getBool(settings_keys::kHardwareAcceleration, false));
-    hardware->setEnabled(false);
-    accelerationLayout->addWidget(hardware);
-    accelerationLayout->addWidget(reservedNote(
-        acceleration,
-        QStringLiteral("Reserved. Phase 0 decodes in software so frame timing is identical on every "
-                       "workstation. GPU decode and CUDA/TensorRT inference arrive with the "
-                       "analysis phases.")));
+    // Enumerated by opening each device, not by asking what FFmpeg was compiled
+    // with: an FFmpeg build contains nearly every accelerator, so a list drawn
+    // from the build would offer the operator hardware this machine has not got.
+    const auto accelerators = hwaccel::devices();
+    const auto usable = hwaccel::availableDevices();
+
+    hardware_ = new QCheckBox(QStringLiteral("Use hardware-accelerated decoding"), acceleration);
+    hardware_->setChecked(context_->settings().getBool(settings_keys::kHardwareAcceleration, false) &&
+                          !usable.empty());
+    hardware_->setEnabled(!usable.empty());
+    accelerationLayout->addWidget(hardware_);
+
+    if (usable.empty()) {
+        QStringList tried;
+        for (const auto& device : accelerators) {
+            tried << QStringLiteral("%1 (%2)")
+                         .arg(QString::fromStdString(device.name),
+                              QString::fromStdString(device.unavailableReason));
+        }
+        accelerationLayout->addWidget(reservedNote(
+            acceleration,
+            tried.isEmpty()
+                ? QStringLiteral("This build of FFmpeg contains no hardware decoders, so TRACE "
+                                 "decodes in software.")
+                // Each device and why it did not open, because "unavailable" on
+                // a machine that has a GPU is a driver problem the operator can
+                // act on, and a bare checkbox would not tell them that.
+                : QStringLiteral("No hardware decoder could be opened on this machine, so TRACE "
+                                 "decodes in software. Tried: %1.")
+                      .arg(tried.join(QStringLiteral(", ")))));
+    } else {
+        accelerationLayout->addWidget(reservedNote(
+            acceleration,
+            QStringLiteral(
+                "Available here: %1.\n\n"
+                "Off by default, and the reason is not caution about speed. A hardware decoder "
+                "is a different implementation of the same standard, and TRACE cannot verify "
+                "from inside itself that this one produces the same pixels as software decoding. "
+                "If it did not, an exported exhibit would depend on which decoder happened to be "
+                "enabled. Every frame TRACE exports records which decoder produced it, and "
+                "docs/HARDWARE_DECODE.md describes how to check the two agree on your own "
+                "footage before relying on this.")
+                .arg([&usable] {
+                    QStringList names;
+                    for (const auto& device : usable) {
+                        names << QString::fromStdString(device.displayName);
+                    }
+                    return names.join(QStringLiteral(", "));
+                }())));
+    }
 
     const auto providers = AnalysisProviderRegistry::instance().providers();
     auto* providerLabel = new QLabel(
@@ -205,6 +247,13 @@ void SettingsDialog::save() {
            QStringLiteral("Jump interval"));
     record(settings.setInt(settings_keys::kPlaybackVolume, volume_->value()),
            QStringLiteral("Volume"));
+    // Only when a device actually opened. Storing true on a machine with no
+    // accelerator would carry a preference that silently does nothing, and the
+    // next person to look would think it was working.
+    if (hardware_->isEnabled()) {
+        record(settings.setBool(settings_keys::kHardwareAcceleration, hardware_->isChecked()),
+               QStringLiteral("Hardware decoding"));
+    }
     record(settings.setString(settings_keys::kLogLevel, logLevel_->currentText().toStdString()),
            QStringLiteral("Logging level"));
 

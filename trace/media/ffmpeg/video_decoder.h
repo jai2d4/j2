@@ -48,6 +48,10 @@ struct DecoderStreamInfo {
     std::string pixelFormat;
     bool hasAudio = false;
     int videoStreamIndex = -1;
+    /// The accelerator that decoded this stream, or empty for software. Recorded
+    /// on every derived asset, so a frame exported through a hardware path says
+    /// which one produced it.
+    std::string hardwareDevice;
 };
 
 /// Decodes video for the viewer.
@@ -74,6 +78,24 @@ public:
     static Result<std::unique_ptr<VideoDecoder>> open(const std::filesystem::path& file,
                                                       const crypto::SecretKey* key = nullptr);
 
+    /// Opens with a named hardware accelerator, falling back to software when it
+    /// cannot be used.
+    ///
+    /// The fallback is deliberate and silent only in the sense that it does not
+    /// fail: `usingHardware()` and `info().hardwareDevice` report what actually
+    /// happened, and that is what gets recorded, so nothing downstream can claim
+    /// a device that did not decode anything. An accelerator that is missing,
+    /// busy, or unsupported for this codec is an ordinary condition on a mixed
+    /// fleet of workstations, not an error worth refusing to play a file over.
+    ///
+    /// Pass an empty `deviceName` to have one chosen, or use `open` for software.
+    static Result<std::unique_ptr<VideoDecoder>> openAccelerated(
+        const std::filesystem::path& file, const std::string& deviceName = {},
+        const crypto::SecretKey* key = nullptr);
+
+    /// True when frames are coming from an accelerator.
+    bool usingHardware() const;
+
     const DecoderStreamInfo& info() const { return info_; }
 
     /// Next frame in presentation order. Returns ErrorCode::NotFound at the end
@@ -95,6 +117,11 @@ public:
 
 private:
     VideoDecoder() = default;
+
+    static Result<std::unique_ptr<VideoDecoder>> openInternal(const std::filesystem::path& file,
+                                                              const crypto::SecretKey* key,
+                                                              const std::string& requestedDevice,
+                                                              bool allowHardware);
 
     struct Impl;
     std::unique_ptr<Impl> impl_;
