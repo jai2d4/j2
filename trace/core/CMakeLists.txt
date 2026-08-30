@@ -28,6 +28,8 @@ add_library(trace_core STATIC
 
     security/sha256.cpp
     security/password.cpp
+    security/crypto.cpp
+    security/keyring.cpp
     security/file_hasher.cpp
     security/user_context.cpp
 
@@ -69,5 +71,8 @@ add_library(trace_core STATIC
 add_library(trace::core ALIAS trace_core)
 
 target_include_directories(trace_core PUBLIC ${PROJECT_SOURCE_DIR})
-target_link_libraries(trace_core PUBLIC SQLite::SQLite3 trace_version Threads::Threads)
+target_link_libraries(trace_core PUBLIC trace::sqlite trace_version Threads::Threads)
+if(TRACE_ENCRYPTION_FOUND)
+    target_link_libraries(trace_core PUBLIC trace::encryption)
+endif()
 trace_apply_common_options(trace_core)

@@ -8,6 +8,7 @@
 #include <string>
 
 #include "core/common/result.h"
+#include "core/security/crypto.h"
 
 struct sqlite3;
 struct sqlite3_stmt;
@@ -79,8 +80,37 @@ private:
 class Database {
 public:
     static Result<std::shared_ptr<Database>> open(const std::filesystem::path& path);
+
+    /// Opens an encrypted case database.
+    ///
+    /// The key goes to SQLCipher as the very first statement on the connection,
+    /// before any pragma or query: keying after a read is too late, and SQLCipher
+    /// answers that with a file-is-not-a-database error rather than encrypting
+    /// retroactively.
+    ///
+    /// A wrong key produces the same error as a corrupt file, because to
+    /// SQLCipher they are the same thing — the page it decrypts is not a SQLite
+    /// header either way. TRACE distinguishes them before it gets here, by
+    /// unwrapping the master key from the keyring, so what reaches an operator
+    /// is "that password did not unlock this workspace" rather than "your
+    /// evidence database is damaged".
+    static Result<std::shared_ptr<Database>> openEncrypted(const std::filesystem::path& path,
+                                                           const crypto::SecretKey& key);
+
     /// In-memory database, used by the unit suite.
     static Result<std::shared_ptr<Database>> openInMemory();
+
+    /// Whether an existing file is an encrypted database.
+    ///
+    /// Reads the first sixteen bytes and looks for SQLite's own header string.
+    /// A plain database starts with "SQLite format 3"; an encrypted one starts
+    /// with ciphertext, because SQLCipher encrypts page one including its header.
+    /// The answer is a fact about the file, not a security check — it decides
+    /// which question to ask the operator, nothing more.
+    static bool fileIsEncrypted(const std::filesystem::path& path);
+
+    /// True when this connection was opened with a key.
+    bool encrypted() const { return encrypted_; }
 
     ~Database();
     Database(const Database&) = delete;
@@ -112,10 +142,12 @@ private:
     friend class Transaction;
     Database(sqlite3* handle, std::filesystem::path path);
     static Result<std::shared_ptr<Database>> openInternal(const std::filesystem::path& path,
-                                                          bool inMemory);
+                                                          bool inMemory,
+                                                          const crypto::SecretKey* key);
 
     sqlite3* handle_ = nullptr;
     std::filesystem::path path_;
+    bool encrypted_ = false;
     mutable std::recursive_mutex mutex_;
     int transactionDepth_ = 0;
 };

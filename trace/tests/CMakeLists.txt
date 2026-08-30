@@ -18,6 +18,7 @@ target_compile_definitions(trace_test_support PUBLIC
 add_executable(trace_unit_tests
     unit/sha256_test.cpp
     unit/password_test.cpp
+    unit/crypto_test.cpp
     unit/common_test.cpp
     unit/storage_layout_test.cpp
     unit/database_test.cpp
@@ -40,6 +41,7 @@ add_executable(trace_integration_tests
     integration/integrity_failure_test.cpp
     integration/media_test.cpp
     integration/audio_test.cpp
+    integration/encryption_test.cpp
     integration/auth_test.cpp
     integration/detection_pipeline_test.cpp
     integration/report_export_test.cpp

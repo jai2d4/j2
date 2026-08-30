@@ -28,6 +28,12 @@ option(TRACE_WITH_OPENCV   "Enable optional OpenCV-backed helpers" OFF)
 # on a machine with no runtime installed; when off, only the deterministic mock
 # detection provider is registered.
 option(TRACE_WITH_ONNXRUNTIME "Build the local ONNX Runtime detection provider" ON)
+
+# Encryption at rest. On by default because a forensic tool that cannot encrypt
+# its case load is the weaker default, but it degrades rather than fails: a
+# machine without SQLCipher or OpenSSL still builds a TRACE that works on
+# unencrypted workspaces and refuses encrypted ones with a stated reason.
+option(TRACE_WITH_ENCRYPTION "Encrypt the case database and evidence at rest" ON)
 set(TRACE_ONNXRUNTIME_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime"
     CACHE PATH "Root of an ONNX Runtime distribution (include/ and lib/)")
 
@@ -35,7 +41,22 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/TraceWarnings.cmake)
 
 # ---------------------------------------------------------------- dependencies
 find_package(Threads REQUIRED)
-find_package(SQLite3 REQUIRED)
+
+# SQLCipher where it is available, plain SQLite where it is not. They export the
+# same symbols, so exactly one of them is linked; trace::sqlite is whichever.
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindEncryptionBackend.cmake)
+if(TRACE_ENCRYPTION_FOUND)
+    add_library(trace_sqlite INTERFACE)
+    target_link_libraries(trace_sqlite INTERFACE trace::sqlcipher)
+    add_library(trace::sqlite ALIAS trace_sqlite)
+    set(TRACE_SQLITE_DESCRIPTION "SQLCipher ${TRACE_SQLCIPHER_VERSION}")
+else()
+    find_package(SQLite3 REQUIRED)
+    add_library(trace_sqlite INTERFACE)
+    target_link_libraries(trace_sqlite INTERFACE SQLite::SQLite3)
+    add_library(trace::sqlite ALIAS trace_sqlite)
+    set(TRACE_SQLITE_DESCRIPTION "${SQLite3_VERSION}")
+endif()
 
 # FFmpeg via pkg-config where it exists, headers and import libraries where it
 # does not. Both paths produce trace::ffmpeg and the same version strings.
@@ -82,7 +103,8 @@ message(STATUS "TRACE ${PROJECT_VERSION} configuration")
 message(STATUS "  build type ......... ${CMAKE_BUILD_TYPE}")
 message(STATUS "  desktop app ........ ${TRACE_BUILD_DESKTOP}")
 message(STATUS "  tests .............. ${TRACE_BUILD_TESTS}")
-message(STATUS "  SQLite ............. ${SQLite3_VERSION}")
+message(STATUS "  SQLite ............. ${TRACE_SQLITE_DESCRIPTION}")
+message(STATUS "  Encryption ......... ${TRACE_ENCRYPTION_FOUND}")
 message(STATUS "  FFmpeg (libav) ..... avformat ${FFMPEG_libavformat_VERSION}, avcodec ${FFMPEG_libavcodec_VERSION} (via ${TRACE_FFMPEG_SOURCE})")
 if(TRACE_BUILD_DESKTOP)
     message(STATUS "  Qt ................. ${Qt6_VERSION}")

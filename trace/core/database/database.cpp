@@ -2,6 +2,8 @@
 
 #include <sqlite3.h>
 
+#include <cstring>
+#include <fstream>
 #include <utility>
 
 #include "core/common/logging.h"
@@ -151,15 +153,40 @@ Database::~Database() {
 }
 
 Result<std::shared_ptr<Database>> Database::open(const std::filesystem::path& path) {
-    return openInternal(path, false);
+    return openInternal(path, false, nullptr);
+}
+
+Result<std::shared_ptr<Database>> Database::openEncrypted(const std::filesystem::path& path,
+                                                          const crypto::SecretKey& key) {
+    using ResultType = Result<std::shared_ptr<Database>>;
+    if (!crypto::available()) {
+        return ResultType::failure(
+            ErrorCode::Unsupported, "This build of TRACE cannot open an encrypted case database",
+            "It was built without SQLCipher. The evidence is intact; this copy of TRACE simply "
+            "has no way to decrypt it. A build with encryption support will open it.");
+    }
+    return openInternal(path, false, &key);
 }
 
 Result<std::shared_ptr<Database>> Database::openInMemory() {
-    return openInternal(":memory:", true);
+    return openInternal(":memory:", true, nullptr);
+}
+
+bool Database::fileIsEncrypted(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    char header[16] = {};
+    in.read(header, sizeof(header));
+    if (in.gcount() != static_cast<std::streamsize>(sizeof(header))) return false;
+    // An empty file is neither; a file that is not SQLite's plaintext header is
+    // treated as encrypted, which is the safe direction to be wrong in — it
+    // leads to asking for a password rather than to reporting corruption.
+    return std::memcmp(header, "SQLite format 3", 16) != 0;
 }
 
 Result<std::shared_ptr<Database>> Database::openInternal(const std::filesystem::path& path,
-                                                        bool inMemory) {
+                                                        bool inMemory,
+                                                        const crypto::SecretKey* key) {
     using ResultType = Result<std::shared_ptr<Database>>;
 
     if (!inMemory) {
@@ -186,6 +213,32 @@ Result<std::shared_ptr<Database>> Database::openInternal(const std::filesystem::
     }
 
     auto database = std::shared_ptr<Database>(new Database(handle, path));
+
+    // The key, before anything else touches the connection. SQLCipher decrypts
+    // page one on the first read, so a pragma issued ahead of this would be
+    // answered against an undecrypted file and fail permanently.
+    if (key != nullptr) {
+        // A raw key, not a passphrase. SQLCipher runs a bare text key through its
+        // own PBKDF2, which would stack a second derivation on top of the one the
+        // keyring already did and make the stored database depend on SQLCipher's
+        // parameters as well as TRACE's. The documented x'...' form hands it the
+        // 256 bits directly, which is what TRACE has and what it means.
+        const std::string keyed = "PRAGMA key = \"x\'" + key->toHexForSqlCipher() + "\'\";";
+        if (auto status = database->execute(keyed); !status) {
+            return ResultType(status.error());
+        }
+        // Force a read of page one. Without it the wrong key is not discovered
+        // until some later query, which would report the failure at a point
+        // that has nothing to do with its cause.
+        auto probe = database->queryInt64("SELECT count(*) FROM sqlite_schema;");
+        if (!probe) {
+            return ResultType::failure(
+                ErrorCode::DatabaseError, "Unable to decrypt the case database",
+                "The key did not open it. If this workspace was moved from another machine, its "
+                "keyring has to come with it.");
+        }
+        database->encrypted_ = true;
+    }
 
     // Durability and referential integrity are worth more than throughput here:
     // this file is the index of the evidence, and a torn write loses provenance.
