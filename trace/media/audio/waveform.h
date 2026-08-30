@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/common/result.h"
+#include "core/security/crypto.h"
 #include "core/common/time_utils.h"
 
 namespace trace {
@@ -52,7 +53,9 @@ public:
     /// Return false from `progress` to abandon the build. Its argument is the fraction
     /// completed, or a negative value when the container declared no duration and there
     /// is honestly no estimate to give.
-    static Result<Waveform> build(const std::filesystem::path& media, int buckets = 2000,
+    /// `key` is needed only when the stored file is an encrypted container.
+    static Result<Waveform> build(const std::filesystem::path& media,
+                                  const crypto::SecretKey* key, int buckets = 2000,
                                   const std::function<bool(double)>& progress = {});
 };
 

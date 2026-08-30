@@ -178,15 +178,18 @@ while providing none, which is worse than an honest failure.
 
 Stated plainly, because a security feature that is oversold is a liability.
 
-- **The database is not encrypted.** Password *hashes* are useless without an
-  expensive attack, but case data, evidence paths and the audit trail sit in a
-  plain SQLite file. Anyone with the file and an ordinary SQLite client can read
-  everything except the passwords. Local accounts control who uses *the
-  application*; they are not access control over the data at rest. Encryption at
-  rest is listed in `docs/ROADMAP.md` and is not built.
-- **Evidence files are not protected.** They are ordinary files in the managed
-  storage directory, readable by anyone with filesystem access. Their *integrity* is
-  checkable by hash; their confidentiality depends on the operating system.
+- **Signing in is not what protects the data.** This section used to say the
+  database was a plain SQLite file that anyone could read, and that local
+  accounts gated the application rather than the data. Encryption at rest now
+  exists — see `docs/ENCRYPTION.md` — but the division of labour is unchanged
+  and worth keeping straight: the *keyring* protects the data, and signing in
+  establishes who is accountable for what happens to it. On an unencrypted
+  workspace, local accounts still control only who uses the application, and
+  anyone with the file can read everything except the passwords.
+- **Derived assets are not encrypted even on an encrypted workspace.**
+  Thumbnails, waveforms and exported frames are written in the clear. See
+  `docs/ENCRYPTION.md` §6, which lists this and the rest of what encryption does
+  not cover.
 - **There are no sessions or timeouts.** Signing in lasts until the application
   closes. An unlocked workstation left running is an unlocked TRACE.
 - **An unclaimed identity can be taken over by whoever runs first-run setup.**

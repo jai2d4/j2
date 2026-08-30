@@ -73,6 +73,11 @@ void PlaybackController::post(Command command) {
     condition_.notify_all();
 }
 
+void PlaybackController::setEvidenceKey(std::optional<crypto::SecretKey> key) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    evidenceKey_ = std::move(key);
+}
+
 void PlaybackController::open(const std::filesystem::path& file) {
     setState(PlaybackState::Opening);
     post(Command{CommandType::Open, file, 0, 0, 1.0});
@@ -196,7 +201,14 @@ void PlaybackController::handleCommand(const Command& command) {
                 info_ = DecoderStreamInfo{};
                 lastError_.clear();
             }
-            auto opened = VideoDecoder::open(command.path);
+            const crypto::SecretKey* key = nullptr;
+            std::optional<crypto::SecretKey> keyCopy;
+            {
+                std::lock_guard<std::mutex> guard(mutex_);
+                keyCopy = evidenceKey_;
+            }
+            if (keyCopy) key = &*keyCopy;
+            auto opened = VideoDecoder::open(command.path, key);
             if (!opened) {
                 logError(kComponent, "Unable to open media",
                          JsonValue::object()

@@ -14,6 +14,7 @@
 
 #include "core/common/result.h"
 #include "core/common/time_utils.h"
+#include "core/security/crypto.h"
 #include "media/ffmpeg/video_decoder.h"
 
 namespace trace {
@@ -72,6 +73,15 @@ public:
     /// Queues an open. Completion arrives as Ready (plus the opened handler) or
     /// Error with a message suitable for display.
     void open(const std::filesystem::path& file);
+
+    /// The key for the evidence being played, when it is stored encrypted.
+    ///
+    /// Set before open(). Held for the life of the controller rather than
+    /// passed with each command, because the worker thread reopens the decoder
+    /// on its own — after a seek past the end, or when a command arrives while
+    /// the previous file is still closing — and a key that arrived with only
+    /// the first command would not be there for the second.
+    void setEvidenceKey(std::optional<crypto::SecretKey> key);
     void close();
 
     void play();
@@ -104,6 +114,10 @@ public:
 
 private:
     enum class CommandType { Open, Close, Play, Pause, Stop, Seek, Step, SetSpeed, Quit };
+
+    /// Guarded by the same mutex as the command queue: set on the GUI thread,
+    /// read on the worker.
+    std::optional<crypto::SecretKey> evidenceKey_;
 
     struct Command {
         CommandType type = CommandType::Play;

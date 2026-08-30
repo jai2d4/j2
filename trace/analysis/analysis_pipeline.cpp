@@ -223,7 +223,7 @@ Result<AnalysisOutcome> AnalysisPipeline::execute(const DetectionAnalysisRequest
     }
 
     // --------------------------------------------------------- open the media
-    auto opened = VideoDecoder::open(request.mediaPath);
+    auto opened = VideoDecoder::open(request.mediaPath, request.mediaKey);
     if (!opened) {
         provider->shutdown();
         return finish(AnalysisRunStatus::Failed, opened.error().toString());

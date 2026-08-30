@@ -305,6 +305,18 @@ void ViewerPanel::openEvidence(const Evidence& evidence) {
     stateLabel_->setText(QStringLiteral("Opening"));
 
     const auto path = context_->evidence().absolutePath(evidence);
+    // Before open(), not after: the transport probes the audio track as part of
+    // opening, and an encrypted item cannot be probed without the key.
+    auto caseKey = context_->evidence().caseKey(evidence.caseId);
+    if (!caseKey) {
+        view_->clear(QString::fromStdString(caseKey.error().message()));
+        stateLabel_->setText(QStringLiteral("Locked"));
+        return;
+    }
+    const CaseKeyHandle key = caseKey.take();
+    playback_->setEvidenceKey(key.present()
+                                  ? std::optional<crypto::SecretKey>(*key.get())
+                                  : std::nullopt);
     playback_->open(QString::fromStdString(path.string()));
 
     // open() probes the track, so by here the answer is known and the transport

@@ -5,6 +5,7 @@
 
 #include "core/common/json.h"
 #include "core/common/result.h"
+#include "core/security/crypto.h"
 #include "core/models/media_metadata.h"
 
 namespace trace {
@@ -24,8 +25,11 @@ public:
     /// Versions of the underlying libraries, for provenance records.
     virtual JsonValue libraryVersions() const = 0;
 
+    /// `key` is needed only when the stored file is an encrypted container;
+    /// a plain file ignores it.
     virtual Result<MediaMetadata> extract(const std::filesystem::path& file,
-                                          const std::string& evidenceId) = 0;
+                                          const std::string& evidenceId,
+                                          const crypto::SecretKey* key = nullptr) = 0;
 };
 
 }  // namespace trace

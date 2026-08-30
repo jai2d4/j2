@@ -173,6 +173,10 @@ void MainWindow::buildMenus() {
     });
 
     fileMenu->addSeparator();
+    encryptWorkspaceAction_ = fileMenu->addAction(QStringLiteral("&Encrypt this workspace…"));
+    connect(encryptWorkspaceAction_, &QAction::triggered, this,
+            &MainWindow::encryptWorkspace);
+
     auto* settings = fileMenu->addAction(QStringLiteral("&Settings…"));
     connect(settings, &QAction::triggered, this, [this] {
         SettingsDialog dialog(context_, this);
@@ -550,8 +554,14 @@ void MainWindow::openEvidenceInViewer(const Evidence& evidence) {
                 // abandonable: without this, closing the window would block in
                 // wait() until the whole recording had been read.
                 auto keepGoing = [&task](double) { return !task.cancellationRequested(); };
+                auto caseKey = context->evidence().caseKey(caseId);
+                if (!caseKey) {
+                    task.reportFinished(false, QString());
+                    return;
+                }
+                const CaseKeyHandle key = caseKey.take();
                 auto asset = context->waveforms().ensureWaveform(
-                    caseId, caseNumber.toStdString(), evidence, 2000, keepGoing);
+                    caseId, caseNumber.toStdString(), evidence, 2000, keepGoing, key.get());
                 if (!asset) {
                     task.reportFinished(false, QString());
                     return;
@@ -583,8 +593,14 @@ void MainWindow::openEvidenceInViewer(const Evidence& evidence) {
             }
         });
         thumbnailTask_->start([context, evidence, caseNumber](BackgroundTask& task) {
+            auto caseKey = context->evidence().caseKey(evidence.caseId);
+            if (!caseKey) {
+                task.reportFinished(false, QString());
+                return;
+            }
+            const CaseKeyHandle key = caseKey.take();
             auto result = context->frameExports().ensureThumbnail(
-                evidence.caseId, caseNumber.toStdString(), evidence);
+                evidence.caseId, caseNumber.toStdString(), evidence, 320, key.get());
             task.reportFinished(static_cast<bool>(result), QString());
         });
     }
@@ -800,6 +816,17 @@ void MainWindow::saveCurrentFrame() {
 
     frameExportTask_->start([context, request, frame](BackgroundTask& task) mutable {
         request.frame = frame.get();
+        // The frame on screen is already decoded, but exportFrame re-reads the
+        // original at full resolution rather than upscaling what the viewer
+        // happens to be showing.
+        auto caseKey = context->evidence().caseKey(request.caseId);
+        if (!caseKey) {
+            task.reportFinished(false, QStringLiteral("Frame not saved: %1")
+                                           .arg(QString::fromStdString(caseKey.error().toString())));
+            return;
+        }
+        const CaseKeyHandle key = caseKey.take();
+        request.key = key.get();
         auto exported = context->frameExports().exportFrame(request);
         if (!exported) {
             task.reportFinished(false, QStringLiteral("Frame not saved: %1")
@@ -882,6 +909,46 @@ void MainWindow::showAbout() {
             "<p style='color:#8d99a4'>Qt %3 · SQLite · FFmpeg</p>")
             .arg(QString::fromUtf8(kApplicationVersion), QString::fromUtf8(kPhase),
                  QString::fromUtf8(qVersion())));
+}
+
+void MainWindow::encryptWorkspace() {
+    if (!context_->isInitialised()) return;
+
+    const WorkspaceState state = context_->workspace();
+    if (!state.buildSupportsEncryption) {
+        QMessageBox::information(
+            this, QStringLiteral("Encryption unavailable"),
+            QStringLiteral("This build of TRACE was built without encryption support, so it "
+                           "cannot encrypt a workspace. The evidence is unaffected."));
+        return;
+    }
+    if (state.encrypted && state.databaseEncrypted) {
+        QMessageBox::information(this, QStringLiteral("Already encrypted"),
+                                 QStringLiteral("This workspace is already stored encrypted."));
+        return;
+    }
+
+    // Conversion rewrites every managed original and re-keys the database, so
+    // it cannot run underneath an open workspace. Saying so plainly beats
+    // starting it and failing part way through.
+    const auto answer = QMessageBox::question(
+        this, QStringLiteral("Encrypt this workspace"),
+        QStringLiteral(
+            "Every recording in this workspace will be rewritten as an encrypted container and "
+            "the case database will be re-keyed. Each item is verified against the digest "
+            "recorded when it was ingested before its original is replaced, and a mismatch "
+            "stops the conversion with that file untouched.\n\n"
+            "This cannot run while the workspace is open. TRACE will close; run the conversion "
+            "from a fresh start, where you will be asked to set the password.\n\n"
+            "There is no way to recover a lost password. Close TRACE now?"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (answer != QMessageBox::Yes) return;
+
+    QMessageBox::information(
+        this, QStringLiteral("Encrypt this workspace"),
+        QStringLiteral("Start TRACE again with --encrypt-workspace to convert this data "
+                       "directory. Nothing has been changed yet."));
+    close();
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {

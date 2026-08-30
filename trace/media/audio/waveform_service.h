@@ -5,6 +5,7 @@
 #include <string>
 
 #include "core/common/result.h"
+#include "core/security/crypto.h"
 #include "core/models/derived_asset.h"
 #include "core/models/evidence.h"
 #include "core/services/derived_asset_service.h"
@@ -26,9 +27,11 @@ public:
     /// Returns the existing waveform asset, or builds and registers one. Items with no
     /// audio track return ErrorCode::NotFound, which callers treat as "nothing to draw"
     /// rather than as a failure.
+    /// `key` is needed only when the managed original is an encrypted container.
     Result<DerivedAsset> ensureWaveform(const std::string& caseId, const std::string& caseNumber,
                                         const Evidence& evidence, int buckets = 2000,
-                                        const std::function<bool(double)>& progress = {});
+                                        const std::function<bool(double)>& progress = {},
+                                        const crypto::SecretKey* key = nullptr);
 
     /// Reads a registered waveform back off disk.
     Result<Waveform> load(const DerivedAsset& asset) const;

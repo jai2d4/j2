@@ -15,7 +15,7 @@ WaveformService::WaveformService(StorageLayout layout,
 
 Result<DerivedAsset> WaveformService::ensureWaveform(
     const std::string& caseId, const std::string& caseNumber, const Evidence& evidence,
-    int buckets, const std::function<bool(double)>& progress) {
+    int buckets, const std::function<bool(double)>& progress, const crypto::SecretKey* key) {
     using ResultType = Result<DerivedAsset>;
 
     // Already built, and the file is still where it was recorded.
@@ -31,7 +31,7 @@ Result<DerivedAsset> WaveformService::ensureWaveform(
     }
 
     const auto source = layout_.resolve(evidence.storageRelPath);
-    auto built = WaveformBuilder::build(source, buckets, progress);
+    auto built = WaveformBuilder::build(source, key, buckets, progress);
     if (!built) return ResultType(built.error());
     const Waveform waveform = built.take();
 

@@ -66,6 +66,12 @@ class AudioOutput::Engine : public QObject {
 public:
     explicit Engine(std::shared_ptr<AudioClock> clock) : clock_(std::move(clock)) {}
 
+    /// Callable from the GUI thread directly; the mutex is what makes that safe.
+    void setKey(std::optional<crypto::SecretKey> key) {
+        std::lock_guard<std::mutex> guard(keyMutex_);
+        evidenceKey_ = std::move(key);
+    }
+
 public slots:
     void openFile(const QString& path) {
         teardown();
@@ -88,8 +94,13 @@ public slots:
         const auto format = negotiateFormat(device);
         if (!format) return;
 
+        std::optional<crypto::SecretKey> key;
+        {
+            std::lock_guard<std::mutex> guard(keyMutex_);
+            key = evidenceKey_;
+        }
         auto opened = AudioDecoder::open(sourcePath_.toStdString(), format->sampleRate(),
-                                         format->channelCount());
+                                         format->channelCount(), key ? &*key : nullptr);
         if (!opened) return;
         decoder_ = opened.take();
 
@@ -210,6 +221,13 @@ private:
 
     std::shared_ptr<AudioClock> clock_;
     QString sourcePath_;
+    /// Written from the GUI thread, read on the audio thread. A plain member
+    /// would be a race: the engine reopens its decoder whenever playback
+    /// restarts, which can be at any moment relative to the viewer changing
+    /// item. Passing it as a queued-call argument instead would need a Qt
+    /// metatype for a key, which is a worse trade than one mutex.
+    mutable std::mutex keyMutex_;
+    std::optional<crypto::SecretKey> evidenceKey_;
     std::unique_ptr<AudioDecoder> decoder_;
     QAudioSink* sink_ = nullptr;
     QIODevice* device_ = nullptr;  ///< owned by the sink
@@ -260,7 +278,8 @@ bool AudioOutput::open(const QString& absolutePath) {
     // Probing here rather than on the audio thread means the viewer can label its
     // controls correctly straight away, instead of enabling them and then finding
     // out there was nothing to play.
-    auto probe = AudioDecoder::open(absolutePath.toStdString(), 48000, 2);
+    auto probe = AudioDecoder::open(absolutePath.toStdString(), 48000, 2,
+                                    evidenceKey_ ? &*evidenceKey_ : nullptr);
     if (!probe) {
         unavailableReason_ = probe.error().code() == ErrorCode::NotFound
                                  ? QStringLiteral("This item has no audio track.")
@@ -290,6 +309,11 @@ void AudioOutput::start(Microseconds fromUs) {
 
 void AudioOutput::stop() {
     QMetaObject::invokeMethod(engine_, "end", Qt::QueuedConnection);
+}
+
+void AudioOutput::setEvidenceKey(std::optional<crypto::SecretKey> key) {
+    evidenceKey_ = key;
+    if (engine_ != nullptr) engine_->setKey(std::move(key));
 }
 
 void AudioOutput::setVolume(int percent) {

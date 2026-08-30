@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/common/result.h"
+#include "core/security/crypto.h"
 #include "core/common/time_utils.h"
 #include "core/models/media_metadata.h"
 
@@ -65,7 +66,13 @@ public:
     VideoDecoder(const VideoDecoder&) = delete;
     VideoDecoder& operator=(const VideoDecoder&) = delete;
 
-    static Result<std::unique_ptr<VideoDecoder>> open(const std::filesystem::path& file);
+    /// Opens a recording for decoding.
+    ///
+    /// `key` is needed only when the file is an encrypted container; a plain
+    /// file ignores it. Passing none for an encrypted file is refused rather
+    /// than reported as an unreadable format.
+    static Result<std::unique_ptr<VideoDecoder>> open(const std::filesystem::path& file,
+                                                      const crypto::SecretKey* key = nullptr);
 
     const DecoderStreamInfo& info() const { return info_; }
 

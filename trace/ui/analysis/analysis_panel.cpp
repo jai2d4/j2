@@ -565,7 +565,18 @@ void AnalysisPanel::startAnalysis() {
         return;
     }
 
-    const DetectionAnalysisRequest request = buildRequest();
+    DetectionAnalysisRequest request = buildRequest();
+
+    // The key lives here rather than inside the request, because the pipeline
+    // borrows it for the length of the run and the run outlives buildRequest().
+    auto caseKey = context_->evidence().caseKey(request.caseId);
+    if (!caseKey) {
+        emit statusMessage(QString::fromStdString(caseKey.error().message()), 8000);
+        return;
+    }
+    analysisKey_ = std::make_shared<CaseKeyHandle>(caseKey.take());
+    request.mediaKey = analysisKey_->get();
+
     cancellationToken_ = std::make_shared<std::atomic<bool>>(false);
 
     {
@@ -633,7 +644,10 @@ void AnalysisPanel::startAnalysis() {
 
     progressTimer_->start();
 
-    task_->start([this, pipeline, job](BackgroundTask& task) mutable {
+    // Captured so the key outlives this scope: the worker decodes for as long
+    // as the run takes, and a dangling key pointer would be a crash rather than
+    // a failed decode.
+    task_->start([this, pipeline, job, key = analysisKey_](BackgroundTask& task) mutable {
         const auto callback = [this, &task](const AnalysisProgress& progress) {
             {
                 std::lock_guard<std::mutex> lock(progressMutex_);

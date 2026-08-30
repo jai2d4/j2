@@ -24,6 +24,10 @@ public:
     ~PlaybackBridge() override;
 
     void open(const QString& absolutePath);
+
+    /// The key for the evidence about to be opened, when the workspace stores
+    /// it encrypted. Set before open().
+    void setEvidenceKey(std::optional<crypto::SecretKey> key);
     void close();
 
     void play();

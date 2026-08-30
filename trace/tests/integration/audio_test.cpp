@@ -364,7 +364,7 @@ TEST(PlaybackClockSourceTest, WithoutAClockSourceFramesKeepTheirOwnPace) {
 }
 
 TEST(WaveformTest, BuildsAnEnvelopeThatSpansTheWholeTrack) {
-    auto built = WaveformBuilder::build(testing::sampleVideoPath(), 512);
+    auto built = WaveformBuilder::build(testing::sampleVideoPath(), nullptr, 512);
     ASSERT_TRUE(built.ok()) << built.error().message();
     const Waveform waveform = built.take();
 
@@ -395,7 +395,7 @@ TEST(WaveformTest, BuildsAnEnvelopeThatSpansTheWholeTrack) {
 TEST(WaveformTest, BucketCountIsIndependentOfHowLongTheRecordingIs) {
     // The point of a fixed bucket count: a short clip and a long one both fit one row.
     for (const int buckets : {64, 256, 2000}) {
-        auto built = WaveformBuilder::build(testing::sampleVideoPath(), buckets);
+        auto built = WaveformBuilder::build(testing::sampleVideoPath(), nullptr, buckets);
         ASSERT_TRUE(built.ok()) << buckets;
         EXPECT_EQ(built.value().buckets(), static_cast<std::size_t>(buckets));
         EXPECT_GT(built.value().bucketDurationUs(), 0);
@@ -403,20 +403,20 @@ TEST(WaveformTest, BucketCountIsIndependentOfHowLongTheRecordingIs) {
 }
 
 TEST(WaveformTest, RefusesABucketCountThatWouldBeUseless) {
-    EXPECT_FALSE(WaveformBuilder::build(testing::sampleVideoPath(), 0).ok());
-    EXPECT_FALSE(WaveformBuilder::build(testing::sampleVideoPath(), 4).ok());
-    EXPECT_FALSE(WaveformBuilder::build(testing::sampleVideoPath(), 1'000'000).ok());
+    EXPECT_FALSE(WaveformBuilder::build(testing::sampleVideoPath(), nullptr, 0).ok());
+    EXPECT_FALSE(WaveformBuilder::build(testing::sampleVideoPath(), nullptr, 4).ok());
+    EXPECT_FALSE(WaveformBuilder::build(testing::sampleVideoPath(), nullptr, 1'000'000).ok());
 }
 
 TEST(WaveformTest, CancellationStopsTheBuild) {
-    auto built = WaveformBuilder::build(testing::sampleVideoPath(), 512,
+    auto built = WaveformBuilder::build(testing::sampleVideoPath(), nullptr, 512,
                                         [](double) { return false; });
     ASSERT_FALSE(built.ok());
     EXPECT_EQ(built.error().code(), ErrorCode::Cancelled);
 }
 
 TEST(WaveformTest, SurvivesARoundTripThroughItsStoredForm) {
-    auto built = WaveformBuilder::build(testing::sampleVideoPath(), 128);
+    auto built = WaveformBuilder::build(testing::sampleVideoPath(), nullptr, 128);
     ASSERT_TRUE(built.ok());
     const Waveform original = built.take();
 
@@ -490,7 +490,7 @@ TEST(WaveformTest, AnItemWithNoAudioReportsNothingToDrawRatherThanFailing) {
     const auto clip = testing::pedestrianVideoPath();
     if (!clip) GTEST_SKIP() << "the video-only clip is not present";
 
-    auto built = WaveformBuilder::build(*clip, 256);
+    auto built = WaveformBuilder::build(*clip, nullptr, 256);
     ASSERT_FALSE(built.ok());
     EXPECT_EQ(built.error().code(), ErrorCode::NotFound)
         << "callers distinguish 'no audio' from 'something broke' by this code";

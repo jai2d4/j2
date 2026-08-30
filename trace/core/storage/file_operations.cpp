@@ -17,7 +17,8 @@ constexpr const char* kComponent = "storage";
 
 Result<CopyOutcome> copyIntoManagedStorage(const std::filesystem::path& source,
                                            const std::filesystem::path& destination,
-                                           const ProgressCallback& progress) {
+                                           const ProgressCallback& progress,
+                                           const crypto::SecretKey* key) {
     using ResultType = Result<CopyOutcome>;
     std::error_code ec;
 
@@ -48,12 +49,29 @@ Result<CopyOutcome> copyIntoManagedStorage(const std::filesystem::path& source,
                                    std::strerror(errno));
     }
     std::filesystem::create_directories(destination.parent_path(), ec);
-    std::ofstream output(destination, std::ios::binary | std::ios::trunc);
-    if (!output) {
-        return ResultType::failure(ErrorCode::IoError,
-                                   "Unable to create managed copy: " + destination.string(),
-                                   std::strerror(errno));
+
+    // Exactly one of these is used. The encrypting path needs the plaintext
+    // length up front, because the container header carries it and is
+    // authenticated — it cannot be patched in after the fact.
+    std::ofstream output;
+    crypto::EncryptedFileWriter encryptedOutput;
+    if (key != nullptr) {
+        if (auto status = encryptedOutput.begin(destination, *key, totalBytes); !status) {
+            return ResultType(status.error());
+        }
+    } else {
+        output.open(destination, std::ios::binary | std::ios::trunc);
+        if (!output) {
+            return ResultType::failure(ErrorCode::IoError,
+                                       "Unable to create managed copy: " + destination.string(),
+                                       std::strerror(errno));
+        }
     }
+    const auto writeFailed = [&](const char* what) {
+        if (output.is_open()) output.close();
+        removeManagedFile(destination);
+        return ResultType::failure(ErrorCode::IoError, what, std::strerror(errno));
+    };
 
     Sha256 hasher;
     std::vector<char> buffer(kStreamChunkSize);
@@ -65,53 +83,67 @@ Result<CopyOutcome> copyIntoManagedStorage(const std::filesystem::path& source,
         const std::streamsize read = input.gcount();
         if (read <= 0) break;
 
-        output.write(buffer.data(), read);
-        if (!output) {
-            output.close();
-            removeManagedFile(destination);
-            return ResultType::failure(ErrorCode::IoError,
-                                       "Write failed while copying into managed storage",
-                                       std::strerror(errno));
+        if (key != nullptr) {
+            auto written = encryptedOutput.write(reinterpret_cast<const std::uint8_t*>(buffer.data()),
+                                                 static_cast<std::size_t>(read));
+            if (!written) {
+                removeManagedFile(destination);
+                return ResultType(written.error());
+            }
+        } else {
+            output.write(buffer.data(), read);
+            if (!output) return writeFailed("Write failed while copying into managed storage");
         }
         hasher.update(buffer.data(), static_cast<std::size_t>(read));
         outcome.bytesCopied += read;
         state.bytesProcessed = outcome.bytesCopied;
 
         if (progress && !progress(state)) {
-            output.close();
+            if (output.is_open()) output.close();
             removeManagedFile(destination);
             return ResultType::failure(ErrorCode::Cancelled, "Import cancelled by operator");
         }
     }
 
     if (input.bad()) {
-        output.close();
+        if (output.is_open()) output.close();
         removeManagedFile(destination);
         return ResultType::failure(ErrorCode::IoError, "Read failed while copying source file",
                                    std::strerror(errno));
     }
 
-    output.flush();
-    if (!output) {
+    if (key != nullptr) {
+        // finish() is also where a short write is caught: the header promised a
+        // length, and a container that does not reach it cannot be fully read.
+        if (auto status = encryptedOutput.finish(); !status) {
+            removeManagedFile(destination);
+            return ResultType(status.error());
+        }
+    } else {
+        output.flush();
+        if (!output) return writeFailed("Unable to flush managed copy to disk");
         output.close();
-        removeManagedFile(destination);
-        return ResultType::failure(ErrorCode::IoError, "Unable to flush managed copy to disk",
-                                   std::strerror(errno));
     }
-    output.close();
     outcome.sourceSha256 = hasher.finalizeHex();
 
-    const auto writtenSize = std::filesystem::file_size(destination, ec);
-    if (ec || writtenSize != totalBytes) {
-        removeManagedFile(destination);
-        return ResultType::failure(ErrorCode::IoError,
-                                   "Managed copy is not the same size as the source",
-                                   "expected " + std::to_string(totalBytes) + " bytes, wrote " +
-                                       std::to_string(ec ? 0 : writtenSize));
+    if (key == nullptr) {
+        // A container is legitimately larger than its plaintext, so this check
+        // belongs to the byte-copy path only; the encrypted path proves the same
+        // thing by decrypting the whole file below.
+        const auto writtenSize = std::filesystem::file_size(destination, ec);
+        if (ec || writtenSize != totalBytes) {
+            removeManagedFile(destination);
+            return ResultType::failure(ErrorCode::IoError,
+                                       "Managed copy is not the same size as the source",
+                                       "expected " + std::to_string(totalBytes) + " bytes, wrote " +
+                                           std::to_string(ec ? 0 : writtenSize));
+        }
     }
 
-    // Independent verification pass over what actually landed on disk.
-    auto destinationHash = hashFile(destination, progress);
+    // Independent verification pass over what actually landed on disk. For an
+    // encrypted copy this reads back through the container, so it proves both
+    // that the bytes are right and that they can be decrypted at all.
+    auto destinationHash = hashStoredEvidence(destination, key, progress);
     if (!destinationHash) {
         removeManagedFile(destination);
         return ResultType(destinationHash.error());

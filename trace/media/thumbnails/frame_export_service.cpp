@@ -99,7 +99,8 @@ Result<DerivedAsset> FrameExportService::exportFrame(const ExportRequest& reques
 
 Result<DerivedAsset> FrameExportService::ensureThumbnail(const std::string& caseId,
                                                          const std::string& caseNumber,
-                                                         const Evidence& evidence, int width) {
+                                                         const Evidence& evidence, int width,
+                                                         const crypto::SecretKey* key) {
     using ResultType = Result<DerivedAsset>;
 
     auto existing = derivedAssets_->listForEvidence(evidence.id);
@@ -114,7 +115,7 @@ Result<DerivedAsset> FrameExportService::ensureThumbnail(const std::string& case
     }
 
     const auto source = layout_.resolve(evidence.storageRelPath);
-    auto decoder = VideoDecoder::open(source);
+    auto decoder = VideoDecoder::open(source, key);
     if (!decoder) return ResultType(decoder.error());
     auto decoderPtr = decoder.take();
 

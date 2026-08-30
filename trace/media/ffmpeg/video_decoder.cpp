@@ -12,6 +12,7 @@ extern "C" {
 }
 
 #include "core/common/logging.h"
+#include "media/ffmpeg/encrypted_io.h"
 #include "media/ffmpeg/ffmpeg_support.h"
 
 namespace trace {
@@ -23,6 +24,9 @@ constexpr AVRational kMicroseconds{1, 1000000};
 }  // namespace
 
 struct VideoDecoder::Impl {
+    // Declared before `format`: the decrypting IO context must outlive the
+    // format context that points at it, and members are destroyed in reverse.
+    EncryptedMediaIo io;
     AVFormatContext* format = nullptr;
     AVCodecContext* codec = nullptr;
     AVStream* stream = nullptr;
@@ -47,7 +51,8 @@ struct VideoDecoder::Impl {
 
 VideoDecoder::~VideoDecoder() = default;
 
-Result<std::unique_ptr<VideoDecoder>> VideoDecoder::open(const std::filesystem::path& file) {
+Result<std::unique_ptr<VideoDecoder>> VideoDecoder::open(const std::filesystem::path& file,
+                                                         const crypto::SecretKey* key) {
     using ResultType = Result<std::unique_ptr<VideoDecoder>>;
     initialiseFFmpeg();
 
@@ -55,7 +60,11 @@ Result<std::unique_ptr<VideoDecoder>> VideoDecoder::open(const std::filesystem::
     decoder->impl_ = std::make_unique<Impl>();
     Impl& impl = *decoder->impl_;
 
-    int rc = avformat_open_input(&impl.format, file.string().c_str(), nullptr, nullptr);
+    std::string url;
+    if (auto status = impl.io.prepare(&impl.format, file, key, &url); !status) {
+        return ResultType(status.error());
+    }
+    int rc = avformat_open_input(&impl.format, url.c_str(), nullptr, nullptr);
     if (rc < 0) {
         return ResultType::failure(ErrorCode::MediaError,
                                    "This file could not be opened for playback",

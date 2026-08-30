@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "analysis/analysis_pipeline.h"
+#include "core/security/workspace_keys.h"
 #include "core/models/analysis_run.h"
 #include "core/models/evidence.h"
 
@@ -98,6 +99,9 @@ private:
     std::optional<AnalysisRun> resultsRun_;
 
     std::unique_ptr<BackgroundTask> task_;
+    /// Keeps the case key alive for the length of a run; the request holds a
+    /// borrowed pointer into it.
+    std::shared_ptr<CaseKeyHandle> analysisKey_;
     /// True from the moment a run is committed to until its outcome has been
     /// handled. Deliberately not derived from the worker thread's own state:
     /// the controls must switch the instant the operator asks for a run, not

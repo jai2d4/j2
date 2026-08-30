@@ -13,6 +13,7 @@
 #include "core/models/media_metadata.h"
 #include "core/repositories/evidence_repository.h"
 #include "core/repositories/metadata_repository.h"
+#include "core/security/workspace_keys.h"
 #include "core/services/audit_service.h"
 #include "core/services/metadata_extractor.h"
 #include "core/storage/storage_layout.h"
@@ -71,9 +72,14 @@ struct IngestOutcome {
 /// evidence row behind; the operator's source file is never touched.
 class EvidenceService {
 public:
+    /// `keys` may be null, which is what an unencrypted workspace looks like.
+    /// When it is present and the workspace is locked, ingestion fails rather
+    /// than writing evidence in the clear into a workspace the operator has been
+    /// told is encrypted.
     EvidenceService(std::shared_ptr<Database> database, StorageLayout layout,
                     std::shared_ptr<AuditService> audit,
-                    std::shared_ptr<IMetadataExtractor> extractor = nullptr);
+                    std::shared_ptr<IMetadataExtractor> extractor = nullptr,
+                    std::shared_ptr<WorkspaceKeys> keys = nullptr);
 
     Result<IngestOutcome> ingest(const IngestRequest& request,
                                  const IngestProgressCallback& progress = {});
@@ -85,6 +91,12 @@ public:
 
     /// Absolute path of the managed original.
     std::filesystem::path absolutePath(const Evidence& evidence) const;
+
+    /// The key that opens a case's evidence, or an empty handle when the
+    /// workspace is not encrypted. Everything that decodes, hashes or exports
+    /// evidence goes through here, so there is one answer rather than one per
+    /// caller.
+    Result<CaseKeyHandle> caseKey(const std::string& caseId) const;
 
     /// Records that an analyst opened the item in the viewer.
     Status recordViewed(const Evidence& evidence, const std::string& caseNumber);
@@ -101,6 +113,8 @@ private:
     StorageLayout layout_;
     std::shared_ptr<AuditService> audit_;
     std::shared_ptr<IMetadataExtractor> extractor_;
+    std::shared_ptr<WorkspaceKeys> keys_;
+
 };
 
 /// Best-effort media classification from a filename, used before the container

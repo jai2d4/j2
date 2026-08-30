@@ -69,6 +69,11 @@ void PlaybackBridge::restartAudioAt(qint64 positionUs) {
     audio_->start(positionUs);
 }
 
+void PlaybackBridge::setEvidenceKey(std::optional<crypto::SecretKey> key) {
+    audio_->setEvidenceKey(key);
+    controller_->setEvidenceKey(std::move(key));
+}
+
 void PlaybackBridge::open(const QString& absolutePath) {
     // Probed before the engine is told to open, so that by the time mediaOpened
     // reaches the viewer, hasAudio() already knows the answer and the transport

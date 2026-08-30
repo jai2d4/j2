@@ -6,6 +6,7 @@
 #include <string>
 
 #include "core/common/result.h"
+#include "core/security/crypto.h"
 #include "core/models/derived_asset.h"
 #include "core/models/evidence.h"
 #include "core/services/derived_asset_service.h"
@@ -31,6 +32,8 @@ public:
         const VideoFrameData* frame = nullptr;
         DecoderStreamInfo decoderInfo;
         std::string notes;
+        /// Needed only when the managed original is an encrypted container.
+        const crypto::SecretKey* key = nullptr;
     };
 
     /// Saves the frame currently on screen as a full-resolution PNG.
@@ -40,7 +43,8 @@ public:
     /// it as a derived asset. Returns the existing asset if one is already on
     /// disk.
     Result<DerivedAsset> ensureThumbnail(const std::string& caseId, const std::string& caseNumber,
-                                         const Evidence& evidence, int width = 320);
+                                         const Evidence& evidence, int width = 320,
+                                         const crypto::SecretKey* key = nullptr);
 
 private:
     StorageLayout layout_;

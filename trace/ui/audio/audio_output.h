@@ -9,6 +9,7 @@
 #include <optional>
 
 #include "core/common/time_utils.h"
+#include "core/security/crypto.h"
 #include "media/audio/audio_clock.h"
 
 namespace trace::ui {
@@ -47,6 +48,11 @@ public:
     bool open(const QString& absolutePath);
     void close();
 
+    /// The key for the evidence being played, when it is stored encrypted. Set
+    /// before open(); the engine reopens its own decoder on every start, so a
+    /// key passed with the first call alone would not survive a seek.
+    void setEvidenceKey(std::optional<crypto::SecretKey> key);
+
     /// Begins rendering from `fromUs` on the media timeline. Called on every
     /// seek: the device is restarted rather than kept running, because a device
     /// carrying a second of already-buffered audio would otherwise keep playing
@@ -75,6 +81,9 @@ private:
     Engine* engine_ = nullptr;  ///< owned by the thread, deleted when it finishes
     bool hasAudio_ = false;
     QString unavailableReason_;
+    /// AudioOutput's own copy, for the probe in open(); the engine holds its
+    /// own behind a mutex because it reads on the audio thread.
+    std::optional<crypto::SecretKey> evidenceKey_;
 };
 
 }  // namespace trace::ui

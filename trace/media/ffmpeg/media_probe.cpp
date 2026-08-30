@@ -17,6 +17,7 @@ extern "C" {
 #include "core/common/string_utils.h"
 #include "core/common/time_utils.h"
 #include "core/common/uuid.h"
+#include "media/ffmpeg/encrypted_io.h"
 #include "media/ffmpeg/ffmpeg_support.h"
 #include "trace/trace_version.h"
 
@@ -105,7 +106,8 @@ std::string FFmpegMetadataExtractor::name() const {
 JsonValue FFmpegMetadataExtractor::libraryVersions() const { return ffmpegLibraryVersions(); }
 
 Result<MediaMetadata> FFmpegMetadataExtractor::extract(const std::filesystem::path& file,
-                                                       const std::string& evidenceId) {
+                                                       const std::string& evidenceId,
+                                                       const crypto::SecretKey* key) {
     using ResultType = Result<MediaMetadata>;
     initialiseFFmpeg();
 
@@ -114,8 +116,15 @@ Result<MediaMetadata> FFmpegMetadataExtractor::extract(const std::filesystem::pa
     metadata.extractor = name();
     metadata.extractedAt = nowIso8601Utc();
 
+    // Declared before the context so it is destroyed after it: the decrypting
+    // IO must outlive the format context that reads through it.
+    EncryptedMediaIo io;
     AVFormatContext* context = nullptr;
-    const int openResult = avformat_open_input(&context, file.string().c_str(), nullptr, nullptr);
+    std::string url;
+    if (auto status = io.prepare(&context, file, key, &url); !status) {
+        return ResultType(status.error());
+    }
+    const int openResult = avformat_open_input(&context, url.c_str(), nullptr, nullptr);
     if (openResult < 0) {
         const std::string detail = ffmpegErrorString(openResult);
         if (context != nullptr) avformat_close_input(&context);

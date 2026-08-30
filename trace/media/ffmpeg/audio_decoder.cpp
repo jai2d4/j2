@@ -9,6 +9,7 @@ extern "C" {
 }
 
 #include "core/common/logging.h"
+#include "media/ffmpeg/encrypted_io.h"
 #include "media/ffmpeg/ffmpeg_support.h"
 
 namespace trace {
@@ -21,6 +22,8 @@ constexpr AVSampleFormat kOutputFormat = AV_SAMPLE_FMT_S16;
 }  // namespace
 
 struct AudioDecoder::Impl {
+    // Before `format`, so the decrypting IO outlives what points at it.
+    EncryptedMediaIo io;
     AVFormatContext* format = nullptr;
     AVCodecContext* codec = nullptr;
     AVStream* stream = nullptr;
@@ -49,7 +52,8 @@ AudioDecoder::~AudioDecoder() = default;
 
 Result<std::unique_ptr<AudioDecoder>> AudioDecoder::open(const std::filesystem::path& file,
                                                          int targetSampleRate,
-                                                         int targetChannels) {
+                                                         int targetChannels,
+                                                         const crypto::SecretKey* key) {
     using ResultType = Result<std::unique_ptr<AudioDecoder>>;
     initialiseFFmpeg();
 
@@ -61,7 +65,11 @@ Result<std::unique_ptr<AudioDecoder>> AudioDecoder::open(const std::filesystem::
     std::unique_ptr<AudioDecoder> decoder(new AudioDecoder());
     Impl& impl = *decoder->impl_;
 
-    int rc = avformat_open_input(&impl.format, file.string().c_str(), nullptr, nullptr);
+    std::string url;
+    if (auto status = impl.io.prepare(&impl.format, file, key, &url); !status) {
+        return ResultType(status.error());
+    }
+    int rc = avformat_open_input(&impl.format, url.c_str(), nullptr, nullptr);
     if (rc < 0) {
         return ResultType::failure(ErrorCode::MediaError,
                                    "Could not open the media: " + ffmpegErrorString(rc));

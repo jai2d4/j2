@@ -103,7 +103,8 @@ Result<Waveform> Waveform::fromJson(const std::string& text) {
     return ResultType::success(std::move(waveform));
 }
 
-Result<Waveform> WaveformBuilder::build(const std::filesystem::path& media, int buckets,
+Result<Waveform> WaveformBuilder::build(const std::filesystem::path& media,
+                                        const crypto::SecretKey* key, int buckets,
                                         const std::function<bool(double)>& progress) {
     using ResultType = Result<Waveform>;
 
@@ -113,7 +114,7 @@ Result<Waveform> WaveformBuilder::build(const std::filesystem::path& media, int 
                                        " and " + std::to_string(kMaximumBuckets) + " buckets");
     }
 
-    auto opened = AudioDecoder::open(media, kAnalysisSampleRate, 1);
+    auto opened = AudioDecoder::open(media, kAnalysisSampleRate, 1, key);
     if (!opened) return ResultType(opened.error());
     auto decoder = opened.take();
 

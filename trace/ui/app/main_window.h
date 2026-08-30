@@ -95,6 +95,7 @@ private:
     void buildCentralWidgets();
     void connectSignals();
     void refreshTimelineTracks();
+    void encryptWorkspace();
     void updateDetectionOverlay();
     void showDetectionInInspector(const QString& detectionId);
     void updateWindowState();
@@ -140,6 +141,7 @@ private:
 
     std::unique_ptr<BackgroundTask> frameExportTask_;
     std::unique_ptr<BackgroundTask> thumbnailTask_;
+    QAction* encryptWorkspaceAction_ = nullptr;
     std::unique_ptr<BackgroundTask> waveformTask_;
     /// Envelope for the item in the viewer, once it has been built.
     std::optional<Waveform> waveform_;
