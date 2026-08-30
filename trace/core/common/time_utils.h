@@ -17,6 +17,11 @@ using Microseconds = std::int64_t;
 /// precision (e.g. "2026-08-20T22:31:00.123Z") so they sort lexicographically
 /// in SQLite and stay unambiguous across time zones.
 std::string nowIso8601Utc();
+
+/// The same format, a number of minutes ahead of now. Used for lockout windows,
+/// which are compared as strings — ISO-8601 UTC sorts lexicographically, so a
+/// string comparison and a time comparison agree.
+std::string iso8601UtcPlusMinutes(int minutes);
 std::string toIso8601Utc(std::chrono::system_clock::time_point tp);
 std::optional<std::chrono::system_clock::time_point> parseIso8601Utc(const std::string& text);
 

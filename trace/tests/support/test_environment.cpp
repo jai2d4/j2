@@ -6,6 +6,7 @@
 
 #include "core/common/logging.h"
 #include "core/common/uuid.h"
+#include "core/security/user_context.h"
 #include "core/database/migrations.h"
 #include "ai/detection/models/model_manager.h"
 #include "media/ffmpeg/media_probe.h"
@@ -61,6 +62,19 @@ TestStack TestStack::create(const std::filesystem::path& dataRoot, bool withMedi
 
     auto migrated = MigrationRunner::applyAll(*stack.database);
     if (!migrated) throw std::runtime_error("Migrations failed: " + migrated.error().toString());
+
+    // Tests run as a signed-in administrator, because that is what real use
+    // looks like: since local accounts arrived, UserContext grants no authority
+    // until AuthService has verified a credential. Establishing it here keeps
+    // the suite exercising the same permission path the application takes,
+    // rather than a permissive one that exists only for tests.
+    {
+        UserAccount operatorAccount = UserContext::current().account();
+        operatorAccount.role = UserRole::Administrator;
+        if (operatorAccount.username.empty()) operatorAccount.username = "test-operator";
+        if (operatorAccount.id.empty()) operatorAccount.id = generateUuid();
+        UserContext::current().setAuthenticatedAccount(operatorAccount);
+    }
 
     stack.audit = std::make_shared<AuditService>(stack.database);
     stack.cases = std::make_unique<CaseService>(stack.database, *stack.layout, stack.audit);

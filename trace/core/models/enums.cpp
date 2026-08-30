@@ -385,6 +385,15 @@ const char* toString(AuditAction action) {
         case AuditAction::DetectionMarkedUncertain:  return "detection.marked_uncertain";
         case AuditAction::ModelLoaded:               return "model.loaded";
         case AuditAction::ModelValidationFailed:     return "model.validation_failed";
+        case AuditAction::SignInSucceeded:         return "auth.sign_in_succeeded";
+        case AuditAction::SignInFailed:            return "auth.sign_in_failed";
+        case AuditAction::SignedOut:               return "auth.signed_out";
+        case AuditAction::AccountLocked:           return "auth.account_locked";
+        case AuditAction::AccountCreated:          return "auth.account_created";
+        case AuditAction::AccountRoleChanged:      return "auth.role_changed";
+        case AuditAction::AccountDeactivated:      return "auth.account_deactivated";
+        case AuditAction::PasswordChanged:         return "auth.password_changed";
+        case AuditAction::PasswordReset:           return "auth.password_reset";
         case AuditAction::Unknown:                   return "unknown";
     }
     return "unknown";
@@ -435,6 +444,15 @@ const char* toDisplayString(AuditAction action) {
         case AuditAction::DetectionMarkedUncertain:  return "Detection marked uncertain";
         case AuditAction::ModelLoaded:               return "Model loaded";
         case AuditAction::ModelValidationFailed:     return "Model validation failed";
+        case AuditAction::SignInSucceeded:         return "Sign-in succeeded";
+        case AuditAction::SignInFailed:            return "Sign-in failed";
+        case AuditAction::SignedOut:               return "Signed out";
+        case AuditAction::AccountLocked:           return "Account locked";
+        case AuditAction::AccountCreated:          return "Account created";
+        case AuditAction::AccountRoleChanged:      return "Account role changed";
+        case AuditAction::AccountDeactivated:      return "Account deactivated";
+        case AuditAction::PasswordChanged:         return "Password changed";
+        case AuditAction::PasswordReset:           return "Password reset";
         case AuditAction::Unknown:                   return "Unknown action";
     }
     return "Unknown action";
@@ -485,6 +503,15 @@ AuditAction auditActionFromString(const std::string& text) {
         {"detection.marked_uncertain", AuditAction::DetectionMarkedUncertain},
         {"model.loaded", AuditAction::ModelLoaded},
         {"model.validation_failed", AuditAction::ModelValidationFailed},
+        {"auth.sign_in_succeeded", AuditAction::SignInSucceeded},
+        {"auth.sign_in_failed", AuditAction::SignInFailed},
+        {"auth.signed_out", AuditAction::SignedOut},
+        {"auth.account_locked", AuditAction::AccountLocked},
+        {"auth.account_created", AuditAction::AccountCreated},
+        {"auth.role_changed", AuditAction::AccountRoleChanged},
+        {"auth.account_deactivated", AuditAction::AccountDeactivated},
+        {"auth.password_changed", AuditAction::PasswordChanged},
+        {"auth.password_reset", AuditAction::PasswordReset},
     };
     for (const auto& entry : kMap) {
         if (text == entry.text) return entry.action;

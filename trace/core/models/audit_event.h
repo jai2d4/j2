@@ -54,6 +54,18 @@ enum class AuditAction {
     DetectionMarkedUncertain,
     ModelLoaded,
     ModelValidationFailed,
+    // Authentication. A failed sign-in is recorded as deliberately as a
+    // successful one: a run of failures against one account is the signal that
+    // somebody is trying, and it is exactly what a trail like this is for.
+    SignInSucceeded,
+    SignInFailed,
+    SignedOut,
+    AccountLocked,
+    AccountCreated,
+    AccountRoleChanged,
+    AccountDeactivated,
+    PasswordChanged,
+    PasswordReset,
     Unknown,
 };
 

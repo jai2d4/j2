@@ -76,6 +76,13 @@ std::optional<std::chrono::system_clock::time_point> parseIso8601Utc(const std::
     return std::chrono::system_clock::from_time_t(t) + std::chrono::milliseconds(millis);
 }
 
+std::string iso8601UtcPlusMinutes(int minutes) {
+    // Formatted by the same function as nowIso8601Utc, so the two are directly
+    // comparable as strings. A lockout expiry written in a different format
+    // would compare wrongly against "now" in the second they share.
+    return toIso8601Utc(std::chrono::system_clock::now() + std::chrono::minutes(minutes));
+}
+
 std::string formatTimecode(Microseconds micros, bool withMilliseconds) {
     const bool negative = micros < 0;
     std::int64_t value = negative ? -micros : micros;
