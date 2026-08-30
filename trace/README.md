@@ -45,7 +45,10 @@ analyst's.
 | Detection inspector: class, confidence, timestamp, box, evidence, model, digest, device, run | Working |
 | Human verification — confirmed / rejected / uncertain, audited, never destructive | Working |
 | Cancel a running analysis; partial results kept and the run recorded as cancelled | Working |
-| **Audio playback** | **Not implemented** — controls are visibly disabled; audio stream metadata *is* extracted and shown |
+| **Audio playback** | **Written, unproven** — implemented through `QAudioSink`; no machine with an audio device has run it. See `docs/AUDIO.md` §5 |
+| Audio decoding and resampling (libswresample) | Working |
+| Waveform envelope on the timeline, generated as a derived asset with provenance | Working |
+| Volume and mute, persisted; neither alters evidence | Working |
 | **Hardware-accelerated decode** | **Not implemented** — setting exists and is disabled; TRACE decodes in software |
 | **GPU inference (CUDA)** | **Written and guarded, never executed here** — this environment has no GPU; see `docs/PHASE1_TESTING.md` |
 | **Face recognition, identity, plates, tracking, re-identification** | **Not implemented, by design** — see `docs/ROADMAP.md` |
@@ -260,6 +263,8 @@ as importantly, what was not.
 | [docs/REPORTING.md](docs/REPORTING.md) | Exhibit bundles, what a report may and may not say, clips |
 | [docs/EXHIBIT_VERIFICATION.md](docs/EXHIBIT_VERIFICATION.md) | How anyone verifies a bundle without TRACE |
 | [docs/PHASE2_TESTING.md](docs/PHASE2_TESTING.md) | Phase 2 coverage and what was not tested |
+| [docs/AUDIO.md](docs/AUDIO.md) | Audio decoding, the waveform, which clock playback follows, and what is unproven |
+| [docs/PHASE3_TESTING.md](docs/PHASE3_TESTING.md) | Phase 3 coverage and the gap where a sound card would be |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What Phase 2+ adds and the extension points waiting for it |
 
 ---

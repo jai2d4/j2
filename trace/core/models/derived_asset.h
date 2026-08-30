@@ -14,6 +14,7 @@ enum class DerivedAssetType {
     WorkingCopy,     ///< analysis-safe transcode of an original
     Clip,            ///< an extracted time range
     AudioExtract,
+    Waveform,        ///< peak envelope of an audio track, for the timeline
     AnalysisOutput,  ///< future AI/model output (Phase 1+)
     Report,
     Other,

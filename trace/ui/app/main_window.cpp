@@ -71,7 +71,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
-    for (auto* task : {frameExportTask_.get(), thumbnailTask_.get()}) {
+    for (auto* task : {frameExportTask_.get(), thumbnailTask_.get(), waveformTask_.get()}) {
         if (task != nullptr) {
             task->requestCancellation();
             task->wait();
@@ -507,6 +507,65 @@ void MainWindow::openEvidenceInViewer(const Evidence& evidence) {
     refreshTimelineTracks();
     updateStatusForEvidence();
 
+    // Build the audio envelope once per item, off the GUI thread. Items with no
+    // audio simply never get a waveform row — that is a fact about the recording,
+    // not a failure worth reporting.
+    waveform_.reset();
+    waveformEvidenceId_.clear();
+    if (evidence.mediaType == MediaType::Video && waveformTask_ == nullptr &&
+        context_->currentCase()) {
+        waveformTask_ = std::make_unique<BackgroundTask>();
+        auto* context = context_;
+        const std::string caseId = context_->currentCase()->id;
+        const QString caseNumber = context_->currentCaseNumber();
+        const std::string evidenceId = evidence.id;
+        // The worker builds into a holder of its own rather than into waveform_.
+        // Several unrelated signals refresh the timeline, so any moment during the
+        // build the GUI thread may read waveform_; a member it reads must never be
+        // written by the worker thread. Ownership passes in the completion slot,
+        // which runs on the GUI thread and is the one point the two threads agree on.
+        auto holder = std::make_shared<std::optional<Waveform>>();
+
+        connect(waveformTask_.get(), &BackgroundTask::finished, this,
+                [this, evidenceId, holder](bool ok, QString) {
+                    if (waveformTask_ != nullptr) {
+                        waveformTask_->wait();
+                        waveformTask_.reset();
+                    }
+                    if (!ok || !context_->isInitialised()) return;
+                    // The operator may have moved on while it was building.
+                    if (!context_->currentEvidence() ||
+                        context_->currentEvidence()->id != evidenceId) {
+                        return;
+                    }
+                    waveform_ = std::move(*holder);
+                    waveformEvidenceId_ = evidenceId;
+                    context_->notifyDerivedAssetsChanged();
+                    refreshTimelineTracks();
+                });
+
+        waveformTask_->start(
+            [context, caseId, caseNumber, evidence, holder](BackgroundTask& task) {
+                // Decoding a long track takes a while, so the build has to be
+                // abandonable: without this, closing the window would block in
+                // wait() until the whole recording had been read.
+                auto keepGoing = [&task](double) { return !task.cancellationRequested(); };
+                auto asset = context->waveforms().ensureWaveform(
+                    caseId, caseNumber.toStdString(), evidence, 2000, keepGoing);
+                if (!asset) {
+                    task.reportFinished(false, QString());
+                    return;
+                }
+                auto loaded = context->waveforms().load(asset.value());
+                if (!loaded) {
+                    task.reportFinished(false, QString());
+                    return;
+                }
+                *holder = loaded.take();
+                task.reportFinished(true, QString());
+            });
+    }
+
     // Generate the preview image once per item, off the GUI thread. It is a
     // derived asset like any other, with its own provenance record.
     if (evidence.mediaType == MediaType::Video && thumbnailTask_ == nullptr) {
@@ -562,6 +621,17 @@ void MainWindow::refreshTimelineTracks() {
         annotationTrack.markers.push_back(std::move(marker));
     }
     tracks.push_back(std::move(annotationTrack));
+
+    // The audio envelope, when this item has one and it has finished building.
+    if (waveform_ && waveform_->valid() && context_->currentEvidence() &&
+        context_->currentEvidence()->id == waveformEvidenceId_) {
+        TimelineTrack audioTrack;
+        audioTrack.name = QStringLiteral("Audio");
+        audioTrack.colour = colors::kAccent;
+        audioTrack.envelopePeaks = waveform_->peaks;
+        audioTrack.envelopeRms = waveform_->rms;
+        tracks.push_back(std::move(audioTrack));
+    }
 
     // Detection lanes come last so the analyst's own marks stay at the top.
     for (auto& lane : detections_->timelineTracks()) tracks.push_back(std::move(lane));
@@ -826,7 +896,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     // signal may already be queued for delivery; deleting its sender discards
     // it, which is what keeps a completing export from calling into services
     // that shutdown() is about to release.
-    for (auto* task : {frameExportTask_.get(), thumbnailTask_.get()}) {
+    for (auto* task : {frameExportTask_.get(), thumbnailTask_.get(), waveformTask_.get()}) {
         if (task != nullptr) {
             task->requestCancellation();
             task->wait();
@@ -834,6 +904,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     }
     frameExportTask_.reset();
     thumbnailTask_.reset();
+    waveformTask_.reset();
 
     context_->shutdown();
     QMainWindow::closeEvent(event);
