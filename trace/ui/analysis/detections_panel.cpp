@@ -9,7 +9,10 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
+#include <QProgressBar>
 #include <QPushButton>
+#include <QShortcut>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -161,6 +164,22 @@ void DetectionsPanel::buildUi() {
     summaryLabel_->setWordWrap(true);
     layout->addWidget(summaryLabel_);
 
+    // ------------------------------------------------------- review progress
+    //
+    // Counted from the database rather than tracked as the operator works, so it
+    // is still right after a restart and when two people review the same run.
+    auto* progressRow = new QHBoxLayout();
+    progressBar_ = new QProgressBar(this);
+    progressBar_->setRange(0, 1000);
+    progressBar_->setTextVisible(false);
+    progressBar_->setFixedHeight(6);
+    progressLabel_ = new QLabel(this);
+    progressLabel_->setStyleSheet(
+        QStringLiteral("color: %1; font-size: 11px;").arg(colors::kTextSecondary.name()));
+    progressRow->addWidget(progressBar_, 1);
+    progressRow->addWidget(progressLabel_);
+    layout->addLayout(progressRow);
+
     // ---------------------------------------------------------------- review
     noteEdit_ = new QLineEdit(this);
     noteEdit_->setPlaceholderText(QStringLiteral("Reviewer note (optional) — saved with the "
@@ -188,6 +207,72 @@ void DetectionsPanel::buildUi() {
     actions->addStretch();
     actions->addWidget(jumpButton_);
     layout->addLayout(actions);
+
+    // ------------------------------------------------- reviewing at scale
+    auto* bulkRow = new QHBoxLayout();
+    autoAdvanceBox_ = new QCheckBox(QStringLiteral("Advance after each decision"), this);
+    autoAdvanceBox_->setChecked(autoAdvance_);
+    autoAdvanceBox_->setToolTip(QStringLiteral(
+        "Move to the next unreviewed detection automatically. With this on, C, X and U "
+        "review a run without touching the mouse."));
+    bulkRow->addWidget(autoAdvanceBox_);
+    bulkRow->addStretch();
+
+    bulkStateBox_ = new QComboBox(this);
+    bulkStateBox_->addItem(QStringLiteral("Confirmed"),
+                           QString::fromUtf8(toString(DetectionVerification::Confirmed)));
+    bulkStateBox_->addItem(QStringLiteral("Rejected"),
+                           QString::fromUtf8(toString(DetectionVerification::Rejected)));
+    bulkStateBox_->addItem(QStringLiteral("Uncertain"),
+                           QString::fromUtf8(toString(DetectionVerification::Uncertain)));
+    bulkButton_ = new QPushButton(QStringLiteral("Mark all matching…"), this);
+    bulkButton_->setToolTip(QStringLiteral(
+        "Apply one decision to every detection the filter above currently matches. Recorded "
+        "as a bulk decision, which is a weaker claim than having examined each one, and shown "
+        "as such wherever these detections appear."));
+    bulkRow->addWidget(bulkStateBox_);
+    bulkRow->addWidget(bulkButton_);
+    layout->addLayout(bulkRow);
+
+    connect(autoAdvanceBox_, &QCheckBox::toggled, this, &DetectionsPanel::setAutoAdvance);
+    connect(bulkButton_, &QPushButton::clicked, this, [this] {
+        const auto state = detectionVerificationFromString(
+            bulkStateBox_->currentData().toString().toStdString());
+        reviewAllMatching(state);
+    });
+
+    // ------------------------------------------------------------- shortcuts
+    //
+    // Single keys rather than modifier combinations: an analyst working a run
+    // keeps one hand on the keyboard for an hour, and Ctrl+Shift+something is
+    // not a thing anybody does ten thousand times. They are scoped to this
+    // panel, so they do not steal keys from the viewer's transport.
+    const auto shortcut = [this](const QKeySequence& keys, void (DetectionsPanel::*slot)()) {
+        auto* action = new QShortcut(keys, this);
+        action->setContext(Qt::WidgetWithChildrenShortcut);
+        connect(action, &QShortcut::activated, this, slot);
+        return action;
+    };
+    shortcut(QKeySequence(Qt::Key_C), &DetectionsPanel::confirmSelected);
+    shortcut(QKeySequence(Qt::Key_X), &DetectionsPanel::rejectSelected);
+    shortcut(QKeySequence(Qt::Key_U), &DetectionsPanel::markSelectedUncertain);
+    shortcut(QKeySequence(Qt::Key_Backspace), &DetectionsPanel::resetSelectedReview);
+
+    for (const auto& keys : {QKeySequence(Qt::Key_J), QKeySequence(Qt::Key_Down)}) {
+        auto* action = new QShortcut(keys, this);
+        action->setContext(Qt::WidgetWithChildrenShortcut);
+        connect(action, &QShortcut::activated, this, [this] { selectNext(false); });
+    }
+    for (const auto& keys : {QKeySequence(Qt::Key_K), QKeySequence(Qt::Key_Up)}) {
+        auto* action = new QShortcut(keys, this);
+        action->setContext(Qt::WidgetWithChildrenShortcut);
+        connect(action, &QShortcut::activated, this, &DetectionsPanel::selectPrevious);
+    }
+    {
+        auto* action = new QShortcut(QKeySequence(Qt::Key_N), this);
+        action->setContext(Qt::WidgetWithChildrenShortcut);
+        connect(action, &QShortcut::activated, this, [this] { selectNext(true); });
+    }
 
     const auto filterChanged = [this] {
         reload();
@@ -278,6 +363,7 @@ void DetectionsPanel::reload() {
     if (!evidence_) {
         runLabel_->setText(QStringLiteral("No evidence open"));
         summaryLabel_->setText(QString());
+        refreshProgress();
         updateActionState();
         return;
     }
@@ -286,6 +372,7 @@ void DetectionsPanel::reload() {
             QStringLiteral("This item has no analysis results. Run an analysis from the AI "
                            "analysis panel."));
         summaryLabel_->setText(QString());
+        refreshProgress();
         updateActionState();
         return;
     }
@@ -363,6 +450,7 @@ void DetectionsPanel::reload() {
         summary += QStringLiteral(". Rejected detections are hidden, not deleted.");
     }
     summaryLabel_->setText(summary);
+    refreshProgress();
 
     if (!previouslySelected.isEmpty()) selectDetection(previouslySelected);
     updateActionState();
@@ -564,12 +652,169 @@ void DetectionsPanel::applyVerification(DetectionVerification state) {
     context_->notifyAuditChanged();
     reload();
     selectDetection(selectedId);
+    // Advance after the reload, not before: the row that was just ruled on may
+    // have left the visible set entirely if the filter excludes its new state,
+    // and moving first would then land on whatever took its place.
+    if (autoAdvance_ && state != DetectionVerification::Unreviewed) selectNext(true);
     emit statusMessage(QStringLiteral("%1 at %2 marked %3")
                            .arg(QString::fromStdString(detection->classLabel),
                                 timecode(detection->timestampUs),
                                 reviewText(state).toLower()),
                        6000);
     emit verificationChanged();
+}
+
+void DetectionsPanel::setAutoAdvance(bool on) {
+    autoAdvance_ = on;
+    if (autoAdvanceBox_ != nullptr && autoAdvanceBox_->isChecked() != on) {
+        autoAdvanceBox_->setChecked(on);
+    }
+}
+
+void DetectionsPanel::selectNext(bool onlyUnreviewed) {
+    const int rows = tree_->topLevelItemCount();
+    if (rows == 0) return;
+
+    const int current = tree_->currentItem() == nullptr
+                            ? -1
+                            : tree_->indexOfTopLevelItem(tree_->currentItem());
+    for (int row = current + 1; row < rows; ++row) {
+        if (onlyUnreviewed && row < static_cast<int>(detections_.size()) &&
+            detections_[static_cast<std::size_t>(row)].verification !=
+                DetectionVerification::Unreviewed) {
+            continue;
+        }
+        tree_->setCurrentItem(tree_->topLevelItem(row));
+        tree_->scrollToItem(tree_->topLevelItem(row));
+        return;
+    }
+    // Nothing further. Saying so beats silently doing nothing, which reads as a
+    // dropped keystroke.
+    emit statusMessage(onlyUnreviewed
+                           ? QStringLiteral("No unreviewed detections after this one.")
+                           : QStringLiteral("End of the list."),
+                       3000);
+}
+
+void DetectionsPanel::selectPrevious() {
+    if (tree_->topLevelItemCount() == 0) return;
+    const int current = tree_->currentItem() == nullptr
+                            ? tree_->topLevelItemCount()
+                            : tree_->indexOfTopLevelItem(tree_->currentItem());
+    if (current <= 0) return;
+    tree_->setCurrentItem(tree_->topLevelItem(current - 1));
+    tree_->scrollToItem(tree_->topLevelItem(current - 1));
+}
+
+QString DetectionsPanel::filterDescription() const {
+    QStringList parts;
+    const QString group = groupFilter_->currentText();
+    if (!groupFilter_->currentData().toString().isEmpty()) {
+        parts << QStringLiteral("class group %1").arg(group);
+    }
+    if (!reviewFilter_->currentData().toString().isEmpty()) {
+        parts << QStringLiteral("currently %1").arg(reviewFilter_->currentText().toLower());
+    }
+    if (confidenceFilter_->value() > 0.0) {
+        parts << QStringLiteral("confidence at or above %1")
+                     .arg(confidenceFilter_->value(), 0, 'f', 2);
+    }
+    if (!includeRejectedBox_->isChecked()) parts << QStringLiteral("excluding rejected");
+    if (parts.isEmpty()) return QStringLiteral("the whole run, unfiltered");
+    return parts.join(QStringLiteral(", "));
+}
+
+std::optional<std::int64_t> DetectionsPanel::reviewAllMatching(DetectionVerification state,
+                                                               bool skipConfirmation) {
+    if (!context_->isInitialised() || !evidence_ || !run_) return std::nullopt;
+
+    const DetectionQuery query = currentQuery();
+    auto counted = context_->analysis().countDetections(query);
+    if (!counted) {
+        emit statusMessage(QStringLiteral("Could not count the matching detections: %1")
+                               .arg(QString::fromStdString(counted.error().message())),
+                           8000);
+        return std::nullopt;
+    }
+    const std::int64_t matching = counted.take();
+    if (matching == 0) {
+        emit statusMessage(QStringLiteral("No detections match the current filter."), 4000);
+        return std::nullopt;
+    }
+
+    const QString description = filterDescription();
+    if (!skipConfirmation) {
+        // The count and the filter in words, before anything happens. A sweep is
+        // reversible — nothing is deleted — but it overwrites decisions somebody
+        // may have made one at a time, and that is worth a sentence.
+        const auto answer = QMessageBox::question(
+            this, QStringLiteral("Mark all matching detections"),
+            QStringLiteral(
+                "Mark %1 detection%2 as %3?\n\nFilter: %4\n\n"
+                "This is recorded as a bulk decision, not as %1 individual reviews — the audit "
+                "trail and each detection will say so, because it is a weaker claim about what "
+                "was examined. Any individual reviews inside this filter are overwritten. "
+                "Nothing is deleted.")
+                .arg(matching)
+                .arg(matching == 1 ? QString() : QStringLiteral("s"),
+                     QString::fromUtf8(toDisplayString(state)).toLower(), description),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes) return std::nullopt;
+    }
+
+    auto changed = context_->analysis().setVerificationForQuery(
+        query, state, noteEdit_->text().trimmed().toStdString(),
+        context_->currentCaseNumber().toStdString(), evidence_->evidenceNumber,
+        description.toStdString());
+    if (!changed) {
+        emit statusMessage(QStringLiteral("Bulk review not recorded: %1")
+                               .arg(QString::fromStdString(changed.error().message())),
+                           8000);
+        return std::nullopt;
+    }
+    const std::int64_t count = changed.take();
+
+    noteEdit_->clear();
+    context_->notifyDetectionsChanged();
+    context_->notifyAuditChanged();
+    reload();
+    emit statusMessage(QStringLiteral("%1 detection%2 marked %3 as one bulk decision")
+                           .arg(count)
+                           .arg(count == 1 ? QString() : QStringLiteral("s"),
+                                QString::fromUtf8(toDisplayString(state)).toLower()),
+                       8000);
+    emit verificationChanged();
+    return count;
+}
+
+void DetectionsPanel::refreshProgress() {
+    progress_ = ReviewProgress{};
+    if (context_->isInitialised() && run_) {
+        auto progress = context_->analysis().reviewProgress(run_->id);
+        if (progress) progress_ = progress.take();
+    }
+
+    progressBar_->setValue(static_cast<int>(progress_.fraction() * 1000.0));
+    if (progress_.total == 0) {
+        progressLabel_->setText(QString());
+        progressBar_->setVisible(false);
+        return;
+    }
+    progressBar_->setVisible(true);
+
+    QString text = QStringLiteral("%1 of %2 reviewed")
+                       .arg(progress_.reviewed())
+                       .arg(progress_.total);
+    // Named explicitly when some of the review was a sweep, because "8,000 of
+    // 8,000 reviewed" and "8,000 of 8,000 reviewed, 12 individually" describe
+    // very different amounts of human attention.
+    const std::int64_t inBulk = progress_.reviewed() - progress_.reviewedIndividually;
+    if (inBulk > 0 && progress_.reviewed() > 0) {
+        text += QStringLiteral(" · %1 individually, %2 in bulk")
+                    .arg(progress_.reviewedIndividually)
+                    .arg(inBulk);
+    }
+    progressLabel_->setText(text);
 }
 
 void DetectionsPanel::updateActionState() {

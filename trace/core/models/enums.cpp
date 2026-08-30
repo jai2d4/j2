@@ -627,6 +627,34 @@ const char* toDisplayString(DetectionVerification state) {
     return "UNREVIEWED";
 }
 
+const char* toString(DetectionReviewMethod method) {
+    switch (method) {
+        case DetectionReviewMethod::NotReviewed: return "not_reviewed";
+        case DetectionReviewMethod::Individual:  return "individual";
+        case DetectionReviewMethod::Bulk:        return "bulk";
+    }
+    return "not_reviewed";
+}
+
+const char* toDisplayString(DetectionReviewMethod method) {
+    switch (method) {
+        case DetectionReviewMethod::NotReviewed: return "Not reviewed";
+        // Worded as a claim about what a person did, because that is what the
+        // distinction is for: one of these says somebody looked at this box.
+        case DetectionReviewMethod::Individual:  return "Reviewed individually";
+        case DetectionReviewMethod::Bulk:        return "Part of a bulk decision";
+    }
+    return "Not reviewed";
+}
+
+DetectionReviewMethod detectionReviewMethodFromString(const std::string& text,
+                                                      DetectionReviewMethod fallback) {
+    if (text == "individual") return DetectionReviewMethod::Individual;
+    if (text == "bulk") return DetectionReviewMethod::Bulk;
+    if (text == "not_reviewed") return DetectionReviewMethod::NotReviewed;
+    return fallback;
+}
+
 DetectionVerification detectionVerificationFromString(const std::string& text,
                                                       DetectionVerification fallback) {
     if (text == "unreviewed") return DetectionVerification::Unreviewed;

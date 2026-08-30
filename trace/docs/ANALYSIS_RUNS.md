@@ -164,6 +164,74 @@ is no delete action in the interface at all.
 Each decision records who made it and when, carries the analyst's optional note, and is
 written to the audit trail.
 
+### Reviewing at scale
+
+An hour of footage produces tens of thousands of boxes. An analyst who has to click each
+one either does not finish or stops looking properly somewhere around the four hundredth,
+and both outcomes are worse than the alternative, so TRACE offers two ways through a run.
+
+**From the keyboard.** With the detections panel focused:
+
+| Key | |
+|---|---|
+| `C` | confirm |
+| `X` | reject |
+| `U` | uncertain |
+| `Backspace` | clear the review |
+| `J` / `↓` | next detection |
+| `K` / `↑` | previous detection |
+| `N` | next **unreviewed** detection |
+
+Single keys, not modifier combinations: this is done thousands of times in a sitting.
+**Advance after each decision** is on by default, so ruling on a detection moves to the
+next unreviewed one — without it, reviewing is click, decide, click, decide, and the
+clicking is most of the work. `N` is what makes a second pass through a part-reviewed run
+practical.
+
+The progress indicator is counted from the database on every refresh, not tracked as the
+operator works, so it is still right after a restart and when two people review the same
+run.
+
+**In bulk.** *Mark all matching…* applies one decision to every detection the current
+filter selects — a class group, a confidence floor, a time range, or any combination. The
+confirmation names the count and the filter in words before anything happens.
+
+### Why a sweep is recorded differently
+
+A sweep and an examination reach the same verification state by very different means, and
+the case file has to be able to tell them apart. "Confirmed" set by somebody looking at
+this box and "confirmed" set by somebody sweeping two thousand boxes in a time range are
+not the same claim about what a human examined.
+
+So:
+
+- **Each detection carries `review_method`** — `individual`, `bulk`, or nothing when
+  unreviewed. It survives into the detection inspector, the report table ("part of a bulk
+  decision"), and the JSON in an exhibit bundle.
+- **A sweep writes one audit record**, naming the filter and the count, with `"bulk": true`
+  and the word "Bulk review" in the description itself. Ten thousand identical records
+  would describe ten thousand examinations that did not happen — to anyone auditing the
+  case later it would read exactly like diligent individual review.
+- **The progress indicator distinguishes them**: "8,000 of 8,000 reviewed · 12
+  individually, 7,988 in bulk" describes a very different amount of human attention from
+  "8,000 of 8,000 reviewed", and only one of them is true.
+- **A sweep overwrites individual reviews inside its filter**, and marks them `bulk`. As of
+  the sweep, the state is the sweep's doing; recording otherwise would credit the current
+  value to an examination that did not produce it.
+
+Rows reviewed before this existed have no `review_method`, and are **not** backfilled as
+`individual`. Every one of them was in fact reviewed one at a time, but writing that in
+would be asserting it from inference rather than from record, and the column exists
+precisely so nobody has to infer it.
+
+Nothing about bulk review deletes anything. Rejecting ten thousand detections marks ten
+thousand rows rejected, exactly as rejecting one does.
+
+A bulk review must name the evidence, the run or the case it applies to. Nothing in the
+interface can produce a filter without one, which is why the service refuses it rather
+than trusting it not to arrive — an unscoped sweep would rule on every detection in the
+database.
+
 ---
 
 ## Multiple runs

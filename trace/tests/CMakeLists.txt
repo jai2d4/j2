@@ -44,6 +44,7 @@ add_executable(trace_integration_tests
     integration/encryption_test.cpp
     integration/auth_test.cpp
     integration/detection_pipeline_test.cpp
+    integration/bulk_review_test.cpp
     integration/report_export_test.cpp
 )
 target_link_libraries(trace_integration_tests PRIVATE

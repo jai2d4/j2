@@ -46,6 +46,8 @@ analyst's.
 | Detections table with class, group, confidence and review filters; click to jump | Working |
 | Detection inspector: class, confidence, timestamp, box, evidence, model, digest, device, run | Working |
 | Human verification — confirmed / rejected / uncertain, audited, never destructive | Working |
+| Keyboard-driven review with auto-advance, and review progress per run | Working |
+| Bulk confirm/reject across a filter — recorded as a bulk decision, not as N reviews | Working |
 | Cancel a running analysis; partial results kept and the run recorded as cancelled | Working |
 | **Audio playback** | **Written, unproven** — implemented through `QAudioSink`; no machine with an audio device has run it. See `docs/AUDIO.md` §5 |
 | Audio decoding and resampling (libswresample) | Working |

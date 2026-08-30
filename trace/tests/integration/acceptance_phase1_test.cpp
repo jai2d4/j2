@@ -208,6 +208,94 @@ std::optional<AnalysisRun> runFor(ui::ApplicationContext& context, const std::st
 
 // ═══════════════════════════════════════════════════ §41 successful analysis
 
+TEST(AcceptancePhase1, ARunCanBeReviewedFromTheKeyboardAndInBulk) {
+    // Reviewing ten thousand boxes with a mouse does not happen. This drives the
+    // panel the way an analyst working a real run does — move, decide, move —
+    // and then the sweep, checking that the progress indicator and the record
+    // both keep up.
+    auto workspace = Workspace::open(testing::sampleVideoPath(), "trace-phase1-review");
+    ASSERT_NE(workspace, nullptr);
+
+    auto* analysis = workspace->window->analysisPanel();
+    auto* detections = workspace->window->detectionsPanel();
+
+    ASSERT_TRUE(selectProvider(analysis, QStringLiteral("mock"), QString()));
+    ASSERT_TRUE(selectQuality(analysis, AnalysisQuality::Standard));
+    analysis->confidenceBox()->setValue(0.10);
+    analysis->analyzeButton()->click();
+    ASSERT_TRUE(waitFor([&] { return !analysis->analysisRunning(); }, 120000));
+    QApplication::processEvents();
+    ASSERT_TRUE(waitFor([&] { return detections->tree()->topLevelItemCount() > 2; }, 20000));
+
+    // Nothing is reviewed yet, and the indicator says so rather than starting
+    // somewhere plausible.
+    ReviewProgress progress = detections->progress();
+    const std::int64_t total = progress.total;
+    ASSERT_GT(total, 2);
+    EXPECT_EQ(progress.reviewed(), 0);
+    EXPECT_DOUBLE_EQ(progress.fraction(), 0.0);
+
+    // Move to the first row and rule on it. With auto-advance on, the selection
+    // should land on something else afterwards — that is the whole point of the
+    // keyboard path.
+    detections->setAutoAdvance(true);
+    detections->selectNext(false);
+    const QString first = detections->selectedDetectionId();
+    ASSERT_FALSE(first.isEmpty());
+
+    detections->confirmSelected();
+    QApplication::processEvents();
+    EXPECT_NE(detections->selectedDetectionId(), first) << "auto-advance did not move on";
+
+    progress = detections->progress();
+    EXPECT_EQ(progress.reviewed(), 1);
+    EXPECT_EQ(progress.confirmed, 1);
+    EXPECT_EQ(progress.reviewedIndividually, 1);
+
+    // A second decision, then walking back with the previous-item action.
+    const QString second = detections->selectedDetectionId();
+    ASSERT_FALSE(second.isEmpty());
+    detections->markSelectedUncertain();
+    QApplication::processEvents();
+    EXPECT_EQ(detections->progress().reviewed(), 2);
+
+    detections->selectPrevious();
+    QApplication::processEvents();
+    EXPECT_FALSE(detections->selectedDetectionId().isEmpty());
+
+    // Now the sweep. skipConfirmation stands in for the operator pressing Yes;
+    // the dialog itself is not what this is testing.
+    auto swept = detections->reviewAllMatching(DetectionVerification::Rejected, true);
+    ASSERT_TRUE(swept.has_value()) << "the bulk review did not run";
+    EXPECT_EQ(*swept, total);
+    QApplication::processEvents();
+
+    progress = detections->progress();
+    EXPECT_EQ(progress.reviewed(), total);
+    EXPECT_EQ(progress.rejected, total);
+    EXPECT_DOUBLE_EQ(progress.fraction(), 1.0);
+    // The two individual reviews were swept over, so nothing remains that a
+    // person ruled on one at a time. Claiming otherwise would overstate what was
+    // examined.
+    EXPECT_EQ(progress.reviewedIndividually, 0);
+
+    // Rejected in bulk still means kept.
+    DetectionQuery kept;
+    kept.evidenceId = workspace->evidence.id;
+    kept.includeRejected = true;
+    auto remaining = workspace->context->analysis().countDetections(kept);
+    ASSERT_TRUE(remaining.ok());
+    EXPECT_EQ(remaining.take(), total) << "a bulk rejection deleted detections";
+
+    // And each row says how it was reviewed, so a report cannot present the
+    // sweep as individual examination.
+    auto rows = workspace->context->analysis().detections(kept);
+    ASSERT_TRUE(rows.ok());
+    for (const auto& detection : rows.take()) {
+        EXPECT_EQ(detection.reviewMethod, DetectionReviewMethod::Bulk);
+    }
+}
+
 TEST(AcceptancePhase1, AnalyzeVideoProducesReviewableResultsThatSurviveARestart) {
     auto workspace = Workspace::open(testing::sampleVideoPath(), "trace-phase1-accept");
     ASSERT_NE(workspace, nullptr);

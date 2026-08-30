@@ -186,6 +186,13 @@ std::string ReportRenderer::renderHtml(const ReportContent& content) {
               << esc(timecode(d.timestampUs)) << "</td><td>" << esc(d.classLabel) << "</td><td>"
               << esc(percent(d.confidence)) << "</td><td>"
               << esc(toDisplayString(d.verification));
+            // A report is read by people deciding what a human actually looked
+            // at. "Confirmed" from a bulk sweep says less than "confirmed" from
+            // an examination, and a report that printed them identically would
+            // overstate the first.
+            if (d.reviewMethod == DetectionReviewMethod::Bulk) {
+                h << "<br><small>part of a bulk decision</small>";
+            }
             if (d.verifiedBy) h << "<br><small>" << esc(*d.verifiedBy);
             if (d.verifiedAt) h << "<br>" << esc(*d.verifiedAt);
             if (d.verifiedBy) h << "</small>";
@@ -416,6 +423,7 @@ std::string ReportRenderer::renderDetectionsJson(const ReportContent& content) {
             .set("confidence", d.confidence)
             .set("box_normalised", box)
             .set("verification_state", toString(d.verification))
+            .set("review_method", toString(d.reviewMethod))
             .set("analyst_note", d.analystNote);
         jsonSetOptional(entry, "frame_number", d.frameNumber);
         jsonSetOptional(entry, "verified_by", d.verifiedBy);

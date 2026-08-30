@@ -15,7 +15,7 @@ namespace {
 
 enum ObservationRow { kClassRow = 0, kGroupRow, kConfidenceRow, kTimestampRow, kFrameRow };
 enum GeometryRow { kNormalisedRow = 0, kPixelRow, kSourceSizeRow };
-enum ReviewRow { kStateRow = 0, kReviewedByRow, kReviewedAtRow, kNoteRow };
+enum ReviewRow { kStateRow = 0, kReviewMethodRow, kReviewedByRow, kReviewedAtRow, kNoteRow };
 enum ProvenanceRow {
     kEvidenceRow = 0,
     kEvidenceDigestRow,
@@ -236,6 +236,13 @@ void DetectionInspector::populate() {
 
     setRowValue(reviewForm_, kStateRow,
                 QString::fromUtf8(toDisplayString(detection.verification)));
+    // Beside the state, not buried: "confirmed" reached by examining this box
+    // and "confirmed" reached by sweeping a filter are different claims, and an
+    // analyst reading this row is often deciding whether to rely on one.
+    setRowValue(reviewForm_, kReviewMethodRow,
+                detection.verification == DetectionVerification::Unreviewed
+                    ? QString()
+                    : QString::fromUtf8(toDisplayString(detection.reviewMethod)));
     setRowValue(reviewForm_, kReviewedByRow, optionalText(detection.verifiedBy));
     setRowValue(reviewForm_, kReviewedAtRow, optionalTimestamp(detection.verifiedAt));
     setRowValue(reviewForm_, kNoteRow, QString::fromStdString(detection.analystNote));

@@ -87,6 +87,35 @@ public:
                            const std::string& analystNote, const std::string& caseNumber,
                            const std::string& evidenceNumber);
 
+    /// Applies one decision to every detection matching `query`, and returns how
+    /// many were changed.
+    ///
+    /// ### Why this writes one audit record and not one per detection
+    ///
+    /// Reviewing ten thousand boxes one at a time does not happen, so without
+    /// this an analyst either does not finish or stops looking properly. But a
+    /// sweep is a different act from an examination, and the record has to say
+    /// which one occurred.
+    ///
+    /// One audit record naming the filter and the count describes what actually
+    /// happened. Ten thousand identical records would describe ten thousand
+    /// examinations that did not take place — it would read, to anyone auditing
+    /// the case later, exactly like diligent individual review. Each affected
+    /// row also carries `review_method = 'bulk'`, so the distinction survives
+    /// into anything derived from the detections themselves.
+    ///
+    /// Nothing is deleted. Rejecting in bulk marks rows rejected, exactly as
+    /// rejecting one does.
+    Result<std::int64_t> setVerificationForQuery(const DetectionQuery& query,
+                                                 DetectionVerification state,
+                                                 const std::string& analystNote,
+                                                 const std::string& caseNumber,
+                                                 const std::string& evidenceNumber,
+                                                 const std::string& filterDescription);
+
+    /// How much of a run has been ruled on.
+    Result<ReviewProgress> reviewProgress(const std::string& analysisRunId);
+
     // Queries used by the panels.
     Result<std::vector<AnalysisRun>> runsForEvidence(const std::string& evidenceId);
     Result<std::optional<AnalysisRun>> latestUsableRun(const std::string& evidenceId);

@@ -92,8 +92,9 @@ Still open from this area:
 
 ### Phase 4 — then, in rough order
 
-- **Detection review at scale** — keyboard-driven review, bulk confirm/reject within a
-  time range and class, and a review-progress indicator per run.
+- ~~**Detection review at scale**~~ — built. Keyboard review with auto-advance, bulk
+  confirm/reject across a filter, and a review-progress indicator per run. A sweep is
+  recorded as a sweep rather than as N examinations; see `docs/ANALYSIS_RUNS.md`.
 - **GPU verification** — the CUDA path is written and guarded but has never executed on a
   GPU here. It needs a machine with an NVIDIA device, a GPU package of ONNX Runtime and a
   measured comparison before any GPU performance claim is made.

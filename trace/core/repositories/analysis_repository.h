@@ -29,6 +29,29 @@ struct DetectionQuery {
     int offset = 0;
 };
 
+/// How far through reviewing a run an analyst is.
+///
+/// Counted from the database rather than tracked as the operator works, so it
+/// stays right across restarts and across two people reviewing the same run.
+struct ReviewProgress {
+    std::int64_t total = 0;
+    std::int64_t unreviewed = 0;
+    std::int64_t confirmed = 0;
+    std::int64_t rejected = 0;
+    std::int64_t uncertain = 0;
+    /// Of the reviewed ones, how many were ruled on individually. The remainder
+    /// were part of a bulk decision, which is a weaker claim about what a person
+    /// examined and is displayed as such.
+    std::int64_t reviewedIndividually = 0;
+
+    std::int64_t reviewed() const { return total - unreviewed; }
+    /// 0..1. A run with no detections is complete rather than undefined: there
+    /// is nothing left to look at.
+    double fraction() const {
+        return total == 0 ? 1.0 : static_cast<double>(reviewed()) / static_cast<double>(total);
+    }
+};
+
 /// One analysed moment at which a class group was present, with how many
 /// objects of that group the model reported there.
 ///
@@ -94,7 +117,29 @@ public:
     Status updateVerification(const std::string& detectionId, DetectionVerification state,
                               const std::optional<std::string>& verifiedBy,
                               const std::optional<std::string>& verifiedAt,
-                              const std::string& analystNote);
+                              const std::string& analystNote,
+                              DetectionReviewMethod method = DetectionReviewMethod::Individual);
+
+    /// Applies one decision to every detection matching `query`, and returns how
+    /// many rows it changed.
+    ///
+    /// One statement rather than a loop: a filter can match tens of thousands of
+    /// rows, and a partially applied sweep would leave the run in a state no
+    /// operator asked for and none of them could describe.
+    ///
+    /// Rows are marked `Bulk` regardless of what they were before. A detection
+    /// somebody examined individually and then swept over has, as of the sweep,
+    /// last been ruled on by a bulk action — recording otherwise would credit the
+    /// current state to an examination that did not produce it.
+    Result<std::int64_t> updateVerificationForQuery(const DetectionQuery& query,
+                                                    DetectionVerification state,
+                                                    const std::optional<std::string>& verifiedBy,
+                                                    const std::optional<std::string>& verifiedAt,
+                                                    const std::string& analystNote,
+                                                    DetectionReviewMethod method);
+
+    /// How much of a run has been ruled on, by state.
+    Result<ReviewProgress> reviewProgress(const std::string& analysisRunId);
 
     /// Distinct class labels present for an item, with counts — drives the filter UI.
     Result<std::vector<std::pair<std::string, std::int64_t>>> classCounts(
