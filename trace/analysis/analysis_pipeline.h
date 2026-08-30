@@ -12,6 +12,7 @@
 #include "ai/detection/models/model_manager.h"
 #include "analysis/frame_sampler.h"
 #include "core/common/result.h"
+#include "core/security/crypto.h"
 #include "core/models/analysis_run.h"
 #include "core/services/analysis_service.h"
 #include "core/storage/storage_layout.h"
@@ -26,6 +27,10 @@ struct DetectionAnalysisRequest {
     std::string evidenceNumber;
     std::filesystem::path mediaPath;
     std::string evidenceSha256;
+    /// Needed only when the managed original is an encrypted container. Held as
+    /// a borrowed pointer for the length of the run, like every other decode
+    /// path; analysis never writes to the evidence, encrypted or not.
+    const crypto::SecretKey* mediaKey = nullptr;
 
     std::string providerId;   ///< registry id, e.g. "onnxruntime"
     std::string modelId;      ///< catalogue id; empty when the provider needs no artefact

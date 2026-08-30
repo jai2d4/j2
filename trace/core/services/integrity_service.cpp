@@ -11,10 +11,12 @@ constexpr const char* kComponent = "integrity";
 }
 
 IntegrityService::IntegrityService(std::shared_ptr<Database> database, StorageLayout layout,
-                                   std::shared_ptr<AuditService> audit)
+                                   std::shared_ptr<AuditService> audit,
+                                   std::shared_ptr<WorkspaceKeys> keys)
     : evidence_(std::make_shared<EvidenceRepository>(std::move(database))),
       layout_(std::move(layout)),
-      audit_(std::move(audit)) {}
+      audit_(std::move(audit)),
+      keys_(std::move(keys)) {}
 
 Result<IntegrityCheck> IntegrityService::verify(const Evidence& evidence,
                                                 const std::string& caseNumber,
@@ -56,7 +58,16 @@ Result<IntegrityCheck> IntegrityService::verify(const Evidence& evidence,
                                    path.string());
     }
 
-    auto hashed = hashFile(path, progress);
+    // For encrypted evidence this decrypts as it hashes, so the number compared
+    // against the stored digest is the digest of the recording, not of the
+    // container that happens to hold it today.
+    CaseKeyHandle caseKey;
+    if (keys_ != nullptr) {
+        auto handle = caseKeyFor(*keys_, evidence.caseId);
+        if (!handle) return ResultType(handle.error());
+        caseKey = handle.take();
+    }
+    auto hashed = hashStoredEvidence(path, caseKey.get(), progress);
     if (!hashed) {
         if (hashed.error().code() != ErrorCode::Cancelled) {
             evidence_->updateIntegrityStatus(evidence.id, IntegrityStatus::Error, check.checkedAt);

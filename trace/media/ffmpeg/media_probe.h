@@ -23,7 +23,8 @@ public:
     std::string name() const override;
     JsonValue libraryVersions() const override;
     Result<MediaMetadata> extract(const std::filesystem::path& file,
-                                  const std::string& evidenceId) override;
+                                  const std::string& evidenceId,
+                                  const crypto::SecretKey* key = nullptr) override;
 };
 
 }  // namespace trace

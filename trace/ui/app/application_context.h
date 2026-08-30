@@ -21,6 +21,7 @@
 #include "core/services/derived_asset_service.h"
 #include "core/services/evidence_service.h"
 #include "core/services/auth_service.h"
+#include "core/services/workspace_service.h"
 #include "core/services/integrity_service.h"
 #include "core/settings/settings_service.h"
 #include "core/storage/storage_layout.h"
@@ -57,6 +58,21 @@ public:
     DerivedAssetService& derivedAssets() const { return *derivedAssetService_; }
     FrameExportService& frameExports() const { return *frameExportService_; }
     WaveformService& waveforms() const { return *waveformService_; }
+    WorkspaceKeys& keys() const { return *keys_; }
+
+    /// What TRACE found in the data directory. Populated by initialise(), and
+    /// by inspectWorkspace() before it.
+    const WorkspaceState& workspace() const { return workspace_; }
+
+    /// Reads the data directory without opening anything, so the application
+    /// can decide whether to ask for a password before the database exists.
+    static WorkspaceState inspectWorkspace(const std::filesystem::path& dataRoot);
+
+    /// Unlocks an encrypted workspace. Must succeed before initialise() for a
+    /// workspace that has a keyring; initialise() refuses otherwise rather than
+    /// opening what it can and leaving the rest failing one call at a time.
+    Status unlockWorkspace(const std::filesystem::path& dataRoot, const std::string& username,
+                           const std::string& password);
     AuthService& auth() const { return *authService_; }
     AnalysisService& analysis() const { return *analysisService_; }
     ReportService& reports() const { return *reportService_; }
@@ -123,6 +139,9 @@ private:
     std::unique_ptr<FrameExportService> frameExportService_;
     std::unique_ptr<WaveformService> waveformService_;
     std::unique_ptr<AuthService> authService_;
+    /// Declared early and destroyed late: services hold a pointer to it.
+    std::shared_ptr<WorkspaceKeys> keys_ = std::make_shared<WorkspaceKeys>();
+    WorkspaceState workspace_;
     std::shared_ptr<AnalysisService> analysisService_;
     std::unique_ptr<ModelManager> modelManager_;
     std::unique_ptr<ReportService> reportService_;

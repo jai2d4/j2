@@ -137,13 +137,20 @@ std::string mimeTypeFromExtension(const std::filesystem::path& path) {
 
 EvidenceService::EvidenceService(std::shared_ptr<Database> database, StorageLayout layout,
                                  std::shared_ptr<AuditService> audit,
-                                 std::shared_ptr<IMetadataExtractor> extractor)
+                                 std::shared_ptr<IMetadataExtractor> extractor,
+                                 std::shared_ptr<WorkspaceKeys> keys)
     : database_(std::move(database)),
       evidence_(std::make_shared<EvidenceRepository>(database_)),
       metadata_(std::make_shared<MetadataRepository>(database_)),
       layout_(std::move(layout)),
       audit_(std::move(audit)),
-      extractor_(std::move(extractor)) {}
+      extractor_(std::move(extractor)),
+      keys_(std::move(keys)) {}
+
+Result<CaseKeyHandle> EvidenceService::caseKey(const std::string& caseId) const {
+    if (keys_ == nullptr) return Result<CaseKeyHandle>::success(CaseKeyHandle());
+    return caseKeyFor(*keys_, caseId);
+}
 
 Result<IngestOutcome> EvidenceService::ingest(const IngestRequest& request,
                                               const IngestProgressCallback& progress) {
@@ -275,7 +282,13 @@ Result<IngestOutcome> EvidenceService::ingest(const IngestRequest& request,
         return keepGoing;
     };
 
-    auto copied = copyIntoManagedStorage(request.sourcePath, destination, copyProgress);
+    // Resolved before the copy starts: a locked workspace has to stop ingestion
+    // here, not after the evidence has already been written somewhere.
+    auto caseKeyResult = caseKey(request.caseId);
+    if (!caseKeyResult) return ResultType(caseKeyResult.error());
+    const CaseKeyHandle key = caseKeyResult.take();
+
+    auto copied = copyIntoManagedStorage(request.sourcePath, destination, copyProgress, key.get());
     if (!copied) {
         if (cancelled || copied.error().code() == ErrorCode::Cancelled) {
             removeManagedFile(destination);
@@ -345,7 +358,7 @@ Result<IngestOutcome> EvidenceService::ingest(const IngestRequest& request,
             fail(error, owningCase.caseNumber);
             return ResultType(error);
         }
-        auto extracted = extractor_->extract(destination, evidence.id);
+        auto extracted = extractor_->extract(destination, evidence.id, key.get());
         if (extracted) {
             metadata = extracted.take();
             outcome.metadataExtracted =
@@ -515,7 +528,10 @@ Result<MediaMetadata> EvidenceService::reextractMetadata(const Evidence& evidenc
         return ResultType::failure(ErrorCode::Unsupported,
                                    "No metadata extractor is available in this build");
     }
-    auto extracted = extractor_->extract(absolutePath(evidence), evidence.id);
+    auto reextractKey = caseKey(evidence.caseId);
+    if (!reextractKey) return Result<MediaMetadata>(reextractKey.error());
+    const CaseKeyHandle reKey = reextractKey.take();
+    auto extracted = extractor_->extract(absolutePath(evidence), evidence.id, reKey.get());
     if (!extracted) {
         evidence_->updateMediaStatus(evidence.id, MediaStatus::MetadataFailed);
         return ResultType(extracted.error());

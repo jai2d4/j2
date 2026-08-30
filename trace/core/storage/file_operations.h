@@ -6,6 +6,7 @@
 #include <string>
 
 #include "core/common/result.h"
+#include "core/security/crypto.h"
 #include "core/security/file_hasher.h"
 
 namespace trace {
@@ -22,9 +23,19 @@ struct CopyOutcome {
 /// hashed by an independent second pass, so a truncated or silently corrupted
 /// write is caught at ingestion rather than at the first integrity check
 /// months later. Refuses to overwrite an existing destination.
+///
+/// When `key` is given, what lands on disk is a TRACE encrypted container
+/// rather than a byte copy — but both digests in the outcome are still digests
+/// of the *evidence*, not of the ciphertext. That is deliberate and load-bearing:
+/// the SHA-256 recorded against a piece of evidence is the one an outside party
+/// computes from the original file, and it has to stay that number whatever
+/// TRACE does to store it. The verification pass reads the container back and
+/// hashes the plaintext, so a container that cannot be decrypted is caught at
+/// ingestion rather than months later.
 Result<CopyOutcome> copyIntoManagedStorage(const std::filesystem::path& source,
                                            const std::filesystem::path& destination,
-                                           const ProgressCallback& progress = {});
+                                           const ProgressCallback& progress = {},
+                                           const crypto::SecretKey* key = nullptr);
 
 /// Best-effort last-modified time of a file as an ISO-8601 UTC string.
 std::optional<std::string> fileModifiedTimeIso8601(const std::filesystem::path& path);

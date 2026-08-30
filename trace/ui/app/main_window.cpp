@@ -550,8 +550,14 @@ void MainWindow::openEvidenceInViewer(const Evidence& evidence) {
                 // abandonable: without this, closing the window would block in
                 // wait() until the whole recording had been read.
                 auto keepGoing = [&task](double) { return !task.cancellationRequested(); };
+                auto caseKey = context->evidence().caseKey(caseId);
+                if (!caseKey) {
+                    task.reportFinished(false, QString());
+                    return;
+                }
+                const CaseKeyHandle key = caseKey.take();
                 auto asset = context->waveforms().ensureWaveform(
-                    caseId, caseNumber.toStdString(), evidence, 2000, keepGoing);
+                    caseId, caseNumber.toStdString(), evidence, 2000, keepGoing, key.get());
                 if (!asset) {
                     task.reportFinished(false, QString());
                     return;
@@ -583,8 +589,14 @@ void MainWindow::openEvidenceInViewer(const Evidence& evidence) {
             }
         });
         thumbnailTask_->start([context, evidence, caseNumber](BackgroundTask& task) {
+            auto caseKey = context->evidence().caseKey(evidence.caseId);
+            if (!caseKey) {
+                task.reportFinished(false, QString());
+                return;
+            }
+            const CaseKeyHandle key = caseKey.take();
             auto result = context->frameExports().ensureThumbnail(
-                evidence.caseId, caseNumber.toStdString(), evidence);
+                evidence.caseId, caseNumber.toStdString(), evidence, 320, key.get());
             task.reportFinished(static_cast<bool>(result), QString());
         });
     }
@@ -800,6 +812,17 @@ void MainWindow::saveCurrentFrame() {
 
     frameExportTask_->start([context, request, frame](BackgroundTask& task) mutable {
         request.frame = frame.get();
+        // The frame on screen is already decoded, but exportFrame re-reads the
+        // original at full resolution rather than upscaling what the viewer
+        // happens to be showing.
+        auto caseKey = context->evidence().caseKey(request.caseId);
+        if (!caseKey) {
+            task.reportFinished(false, QStringLiteral("Frame not saved: %1")
+                                           .arg(QString::fromStdString(caseKey.error().toString())));
+            return;
+        }
+        const CaseKeyHandle key = caseKey.take();
+        request.key = key.get();
         auto exported = context->frameExports().exportFrame(request);
         if (!exported) {
             task.reportFinished(false, QStringLiteral("Frame not saved: %1")

@@ -329,7 +329,11 @@ Result<ExportOutcome> ReportService::exportReport(
             const Evidence* source = evidenceFor(*item.evidenceId);
             if (source == nullptr) return fail("A requested frame refers to evidence not included");
 
-            auto opened = VideoDecoder::open(evidence_.absolutePath(*source));
+            auto sourceKey = evidence_.caseKey(source->caseId);
+            if (!sourceKey) return fail(sourceKey.error().message());
+            const CaseKeyHandle key = sourceKey.take();
+
+            auto opened = VideoDecoder::open(evidence_.absolutePath(*source), key.get());
             if (!opened) return fail("Could not open media to extract a frame: " +
                                      opened.error().message());
             auto decoder = opened.take();
@@ -346,6 +350,7 @@ Result<ExportOutcome> ReportService::exportReport(
             exportRequest.frame = &frame;
             exportRequest.decoderInfo = decoder->info();
             exportRequest.notes = "Exhibit for report " + outcome.report.title;
+            exportRequest.key = key.get();
 
             auto exported = frames_.exportFrame(exportRequest);
             if (!exported) return fail("Could not export a frame: " + exported.error().message());

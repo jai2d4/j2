@@ -30,7 +30,25 @@ Status ApplicationContext::initialise(const std::filesystem::path& dataRoot) {
                 .set("phase", kPhase)
                 .set("data_root", dataRoot.string()));
 
-    auto opened = Database::open(layout_->databasePath());
+    workspace_ = WorkspaceService::inspect(dataRoot);
+    if (workspace_.encrypted) {
+        if (!workspace_.buildSupportsEncryption) {
+            return Status::failure(
+                ErrorCode::Unsupported, "This workspace is encrypted and this build cannot open it",
+                "The evidence is intact. A build of TRACE with encryption support will open it.");
+        }
+        if (!keys_->unlocked()) {
+            // Opening what can be opened and failing on each case afterwards
+            // would look like a broken workspace rather than a locked one.
+            return Status::failure(
+                ErrorCode::PermissionDenied, "This workspace is encrypted and has not been unlocked",
+                "Sign in with an operator who has access to it.");
+        }
+    }
+
+    auto opened = workspace_.databaseEncrypted
+                      ? Database::openEncrypted(layout_->databasePath(), keys_->masterKey().take())
+                      : Database::open(layout_->databasePath());
     if (!opened) return Status(opened.error());
     database_ = opened.take();
 
@@ -41,8 +59,9 @@ Status ApplicationContext::initialise(const std::filesystem::path& dataRoot) {
     auditService_ = std::make_shared<AuditService>(database_);
     caseService_ = std::make_unique<CaseService>(database_, *layout_, auditService_);
     evidenceService_ = std::make_unique<EvidenceService>(
-        database_, *layout_, auditService_, std::make_shared<FFmpegMetadataExtractor>());
-    integrityService_ = std::make_unique<IntegrityService>(database_, *layout_, auditService_);
+        database_, *layout_, auditService_, std::make_shared<FFmpegMetadataExtractor>(), keys_);
+    integrityService_ =
+        std::make_unique<IntegrityService>(database_, *layout_, auditService_, keys_);
     annotationService_ = std::make_unique<AnnotationService>(database_, auditService_);
     derivedAssetService_ = std::make_shared<DerivedAssetService>(database_, *layout_, auditService_);
     frameExportService_ = std::make_unique<FrameExportService>(*layout_, derivedAssetService_);
@@ -106,6 +125,16 @@ Status ApplicationContext::initialise(const std::filesystem::path& dataRoot) {
     return Status::success();
 }
 
+WorkspaceState ApplicationContext::inspectWorkspace(const std::filesystem::path& dataRoot) {
+    return WorkspaceService::inspect(dataRoot);
+}
+
+Status ApplicationContext::unlockWorkspace(const std::filesystem::path& dataRoot,
+                                           const std::string& username,
+                                           const std::string& password) {
+    return WorkspaceService::unlock(dataRoot, username, password, *keys_);
+}
+
 void ApplicationContext::shutdown() {
     if (!initialised_) return;
     initialised_ = false;
@@ -120,6 +149,10 @@ void ApplicationContext::shutdown() {
 
     frameExportService_.reset();
     waveformService_.reset();
+    // Drop the key before anything else: from here on nothing more should be
+    // decrypted, and holding it after the services that use it have gone is
+    // just a key sitting in memory for no reason.
+    keys_->lock();
     authService_.reset();
     settingsService_.reset();
     reportService_.reset();

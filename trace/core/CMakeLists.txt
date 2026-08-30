@@ -30,6 +30,7 @@ add_library(trace_core STATIC
     security/password.cpp
     security/crypto.cpp
     security/keyring.cpp
+    security/workspace_keys.cpp
     security/file_hasher.cpp
     security/user_context.cpp
 
@@ -56,6 +57,7 @@ add_library(trace_core STATIC
     storage/file_operations.cpp
 
     services/audit_service.cpp
+    services/workspace_service.cpp
     services/auth_service.cpp
     services/case_service.cpp
     services/evidence_service.cpp

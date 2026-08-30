@@ -14,6 +14,9 @@
 #include <vector>
 
 #include "core/database/database.h"
+#include "media/ffmpeg/audio_decoder.h"
+#include "media/ffmpeg/media_probe.h"
+#include "media/ffmpeg/video_decoder.h"
 #include "core/database/migrations.h"
 #include "core/security/crypto.h"
 #include "core/security/keyring.h"
@@ -357,6 +360,173 @@ TEST_F(EncryptedDatabase, TheFullSchemaMigratesInsideAnEncryptedDatabase) {
         "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'evidence';");
     ASSERT_TRUE(tables.ok());
     EXPECT_EQ(tables.take(), 1);
+}
+
+// ------------------------------------------------- encrypted evidence, decoded
+
+class EncryptedMedia : public ::testing::Test {
+protected:
+    void SetUp() override {
+        if (!crypto::available()) GTEST_SKIP() << "built without encryption support";
+    }
+
+    /// Writes the sample recording into a TRACE container under `key`.
+    static void encryptSample(const std::filesystem::path& into, const crypto::SecretKey& key) {
+        const auto source = testing::sampleVideoPath();
+        std::ifstream in(source, std::ios::binary);
+        ASSERT_TRUE(in.good());
+        const std::string bytes((std::istreambuf_iterator<char>(in)),
+                                std::istreambuf_iterator<char>());
+        ASSERT_FALSE(bytes.empty());
+
+        crypto::EncryptedFileWriter writer;
+        ASSERT_TRUE(writer.begin(into, key, bytes.size()).ok());
+        ASSERT_TRUE(writer.write(reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size())
+                        .ok());
+        ASSERT_TRUE(writer.finish().ok());
+    }
+};
+
+TEST_F(EncryptedMedia, ProbeReadsTheSameMetadataThroughTheContainer) {
+    // If the decrypting IO were subtly wrong -- a bad seek, a short read -- the
+    // duration or the codec would come back different. Comparing against the
+    // plaintext probe is what makes that visible.
+    auto key = crypto::SecretKey::random();
+    ASSERT_TRUE(key.ok());
+    const auto secret = key.take();
+
+    testing::TemporaryDirectory root("encrypted-probe");
+    const auto container = root.path() / "evidence.trace";
+    encryptSample(container, secret);
+
+    FFmpegMetadataExtractor extractor;
+    auto plain = extractor.extract(testing::sampleVideoPath(), "EVD-plain");
+    ASSERT_TRUE(plain.ok()) << plain.error().toString();
+    auto encrypted = extractor.extract(container, "EVD-encrypted", &secret);
+    ASSERT_TRUE(encrypted.ok()) << encrypted.error().toString();
+
+    const MediaMetadata a = plain.take();
+    const MediaMetadata b = encrypted.take();
+    EXPECT_EQ(a.durationUs, b.durationUs);
+    EXPECT_EQ(a.width, b.width);
+    EXPECT_EQ(a.height, b.height);
+    EXPECT_EQ(a.videoCodec, b.videoCodec);
+    EXPECT_EQ(a.frameCount, b.frameCount);
+}
+
+TEST_F(EncryptedMedia, DecodedFramesAreIdenticalToTheUnencryptedRecording) {
+    // The claim that encryption changes nothing about the evidence, tested
+    // pixel by pixel rather than asserted.
+    auto key = crypto::SecretKey::random();
+    ASSERT_TRUE(key.ok());
+    const auto secret = key.take();
+
+    testing::TemporaryDirectory root("encrypted-decode");
+    const auto container = root.path() / "evidence.trace";
+    encryptSample(container, secret);
+
+    auto plainDecoder = VideoDecoder::open(testing::sampleVideoPath());
+    ASSERT_TRUE(plainDecoder.ok()) << plainDecoder.error().toString();
+    auto encryptedDecoder = VideoDecoder::open(container, &secret);
+    ASSERT_TRUE(encryptedDecoder.ok()) << encryptedDecoder.error().toString();
+
+    auto plain = plainDecoder.take();
+    auto encrypted = encryptedDecoder.take();
+
+    int compared = 0;
+    for (int i = 0; i < 12; ++i) {
+        auto a = plain->nextFrame();
+        auto b = encrypted->nextFrame();
+        if (!a.ok() || !b.ok()) break;
+        const auto frameA = a.take();
+        const auto frameB = b.take();
+        ASSERT_EQ(frameA.presentationUs, frameB.presentationUs) << "frame " << i;
+        ASSERT_EQ(frameA.width, frameB.width);
+        ASSERT_EQ(frameA.height, frameB.height);
+        ASSERT_EQ(frameA.rgb, frameB.rgb) << "frame " << i << " decoded differently";
+        ++compared;
+    }
+    EXPECT_GE(compared, 3) << "not enough frames decoded to prove anything";
+}
+
+TEST_F(EncryptedMedia, SeekingInsideAContainerLandsWhereItDoesInThePlaintext) {
+    // Seeking is what the chunked format exists for. A decoder that can only
+    // read forward would still pass the test above.
+    auto key = crypto::SecretKey::random();
+    ASSERT_TRUE(key.ok());
+    const auto secret = key.take();
+
+    testing::TemporaryDirectory root("encrypted-seek");
+    const auto container = root.path() / "evidence.trace";
+    encryptSample(container, secret);
+
+    auto plainDecoder = VideoDecoder::open(testing::sampleVideoPath());
+    auto encryptedDecoder = VideoDecoder::open(container, &secret);
+    ASSERT_TRUE(plainDecoder.ok() && encryptedDecoder.ok());
+    auto plain = plainDecoder.take();
+    auto encrypted = encryptedDecoder.take();
+
+    for (Microseconds target : {Microseconds{1000000}, Microseconds{500000}, Microseconds{0}}) {
+        auto a = plain->frameAt(target);
+        auto b = encrypted->frameAt(target);
+        ASSERT_EQ(a.ok(), b.ok()) << "seek to " << target << " disagreed on success";
+        if (!a.ok()) continue;
+        const auto frameA = a.take();
+        const auto frameB = b.take();
+        EXPECT_EQ(frameA.presentationUs, frameB.presentationUs) << "seek to " << target;
+        EXPECT_EQ(frameA.rgb, frameB.rgb) << "seek to " << target;
+    }
+}
+
+TEST_F(EncryptedMedia, OpeningEncryptedEvidenceWithoutAKeyIsRefusedClearly) {
+    // The failure an operator sees must name the real problem. Handed to FFmpeg
+    // unkeyed, a container is just an unrecognised format, and the message
+    // sends them looking for a missing codec.
+    auto key = crypto::SecretKey::random();
+    ASSERT_TRUE(key.ok());
+    testing::TemporaryDirectory root("encrypted-nokey");
+    const auto container = root.path() / "evidence.trace";
+    encryptSample(container, key.take());
+
+    auto opened = VideoDecoder::open(container);
+    ASSERT_FALSE(opened.ok());
+    EXPECT_EQ(opened.error().code(), ErrorCode::PermissionDenied);
+
+    FFmpegMetadataExtractor extractor;
+    auto probed = extractor.extract(container, "EVD-1");
+    ASSERT_FALSE(probed.ok());
+    EXPECT_EQ(probed.error().code(), ErrorCode::PermissionDenied);
+}
+
+TEST_F(EncryptedMedia, TheWrongKeyFailsRatherThanDecodingNoise) {
+    auto right = crypto::SecretKey::random();
+    auto wrong = crypto::SecretKey::random();
+    ASSERT_TRUE(right.ok() && wrong.ok());
+    const auto wrongKey = wrong.take();
+
+    testing::TemporaryDirectory root("encrypted-wrongkey");
+    const auto container = root.path() / "evidence.trace";
+    encryptSample(container, right.take());
+
+    auto opened = VideoDecoder::open(container, &wrongKey);
+    if (opened.ok()) {
+        // If the container header let it get this far, no frame may decode.
+        auto frame = opened.take()->nextFrame();
+        EXPECT_FALSE(frame.ok()) << "a wrong key produced a decoded frame";
+    }
+}
+
+TEST_F(EncryptedMedia, APlainFileStillOpensWhenAKeyIsOffered) {
+    // Encryption is opt-in per file. An unencrypted recording in an encrypted
+    // workspace -- which is what every case ingested before this feature looks
+    // like -- must keep working.
+    auto key = crypto::SecretKey::random();
+    ASSERT_TRUE(key.ok());
+    const auto secret = key.take();
+
+    auto opened = VideoDecoder::open(testing::sampleVideoPath(), &secret);
+    ASSERT_TRUE(opened.ok()) << opened.error().toString();
+    EXPECT_TRUE(opened.take()->nextFrame().ok());
 }
 
 }  // namespace

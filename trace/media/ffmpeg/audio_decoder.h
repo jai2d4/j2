@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/common/result.h"
+#include "core/security/crypto.h"
 #include "core/common/time_utils.h"
 
 namespace trace {
@@ -73,9 +74,11 @@ public:
 
     /// Opens the first audio stream. Fails with ErrorCode::NotFound when the file has
     /// none — an absent audio track is a fact about the evidence, not an error to hide.
+    /// `key` is needed only when the file is an encrypted container.
     static Result<std::unique_ptr<AudioDecoder>> open(const std::filesystem::path& file,
                                                       int targetSampleRate = 48000,
-                                                      int targetChannels = 2);
+                                                      int targetChannels = 2,
+                                                      const crypto::SecretKey* key = nullptr);
 
     const AudioStreamInfo& info() const { return info_; }
 
