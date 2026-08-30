@@ -4,6 +4,7 @@
 // real evidence file: the fixture is copied into a scratch directory first, and
 // what gets modified is the managed copy inside that scratch case.
 #include <gtest/gtest.h>
+#include <iterator>
 
 #include <fstream>
 

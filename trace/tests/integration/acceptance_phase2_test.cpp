@@ -9,7 +9,9 @@
 //   §1 a successful export, verified independently, surviving a restart
 //   §2 a failed export: recorded failed, never exported, no bundle left behind
 //   §3 a cancelled export: nothing presented as complete
+#include <algorithm>
 #include <gtest/gtest.h>
+#include <iterator>
 
 #include <QApplication>
 #include <QCheckBox>

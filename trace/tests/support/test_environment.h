@@ -50,6 +50,13 @@ bool realDetectionModelAvailable();
 
 /// A fully wired stack over a temporary data directory: database, migrations,
 /// storage layout and every service, including the real FFmpeg extractor.
+/// Sets an environment variable without overwriting one the caller already set.
+///
+/// setenv is POSIX and absent on Windows, where the equivalent is _putenv_s and
+/// has no "do not overwrite" flag — so the check is done here, once, rather than
+/// in every test main().
+void setEnvironmentIfUnset(const char* name, const std::string& value);
+
 struct TestStack {
     std::shared_ptr<Database> database;
     std::unique_ptr<StorageLayout> layout;

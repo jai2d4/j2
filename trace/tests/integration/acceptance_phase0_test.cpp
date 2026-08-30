@@ -5,6 +5,7 @@
 // documented workflow, then restarts it and checks that everything survived.
 // Only the file-chooser dialog is bypassed: the import runs through the real
 // IngestDialog with the path supplied directly.
+#include <algorithm>
 #include <gtest/gtest.h>
 
 #include <QApplication>

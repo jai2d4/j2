@@ -4,7 +4,9 @@
 // managed copy exists, is byte-identical, hashes to an independently computed
 // digest, is recorded in the database with real metadata, and leaves an audit
 // trail. The source file must come out untouched.
+#include <algorithm>
 #include <gtest/gtest.h>
+#include <iterator>
 
 #include <fstream>
 
