@@ -20,7 +20,7 @@ constexpr const char* kDetectionColumns =
     "id, analysis_run_id, case_id, evidence_id, timestamp_us, frame_number, class_id, "
     "class_label, class_group, confidence, bbox_x, bbox_y, bbox_w, bbox_h, bbox_pixel_x, "
     "bbox_pixel_y, bbox_pixel_w, bbox_pixel_h, verification_state, verified_by, verified_at, "
-    "analyst_note, created_at";
+    "analyst_note, created_at, review_method";
 
 AnalysisRun readRun(const Statement& stmt) {
     AnalysisRun run;
@@ -81,6 +81,10 @@ Detection readDetection(const Statement& stmt) {
     detection.verifiedAt = stmt.columnOptionalText(20);
     detection.analystNote = stmt.columnText(21);
     detection.createdAt = stmt.columnText(22);
+    // NULL for anything reviewed before migration 0006, and for anything not
+    // reviewed at all. Neither is guessed at: the column exists so that "a
+    // person looked at this" is a record rather than an inference.
+    detection.reviewMethod = detectionReviewMethodFromString(stmt.columnText(23));
     return detection;
 }
 
@@ -304,7 +308,7 @@ Status AnalysisRepository::insertDetections(const std::vector<Detection>& detect
 
     auto prepared = database_->prepare(
         std::string("INSERT INTO detections (") + kDetectionColumns +
-        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
     if (!prepared) return Status(prepared.error());
     Statement stmt = prepared.take();
 
@@ -332,7 +336,13 @@ Status AnalysisRepository::insertDetections(const std::vector<Detection>& detect
             .bindOptional(20, detection.verifiedBy)
             .bindOptional(21, detection.verifiedAt)
             .bind(22, detection.analystNote)
-            .bind(23, detection.createdAt);
+            .bind(23, detection.createdAt)
+            // NULL rather than "not_reviewed": an unreviewed detection has no
+            // review method, and a string saying so would read as a recorded
+            // fact about a review that never happened.
+            .bindOptional(24, detection.reviewMethod == DetectionReviewMethod::NotReviewed
+                                  ? std::optional<std::string>()
+                                  : std::optional<std::string>(toString(detection.reviewMethod)));
         if (auto status = stmt.run(); !status) return status;
     }
 
@@ -426,22 +436,102 @@ Status AnalysisRepository::updateVerification(const std::string& detectionId,
                                               DetectionVerification state,
                                               const std::optional<std::string>& verifiedBy,
                                               const std::optional<std::string>& verifiedAt,
-                                              const std::string& analystNote) {
+                                              const std::string& analystNote,
+                                              DetectionReviewMethod method) {
     auto prepared = database_->prepare(
         "UPDATE detections SET verification_state = ?, verified_by = ?, verified_at = ?, "
-        "analyst_note = ? WHERE id = ?;");
+        "analyst_note = ?, review_method = ? WHERE id = ?;");
     if (!prepared) return Status(prepared.error());
     Statement stmt = prepared.take();
+    // Clearing a review clears how it was made: leaving the method behind would
+    // describe a decision that no longer exists.
+    const bool clearing = state == DetectionVerification::Unreviewed;
     stmt.bind(1, std::string(toString(state)))
         .bindOptional(2, verifiedBy)
         .bindOptional(3, verifiedAt)
         .bind(4, analystNote)
-        .bind(5, detectionId);
+        .bindOptional(5, clearing || method == DetectionReviewMethod::NotReviewed
+                             ? std::optional<std::string>()
+                             : std::optional<std::string>(toString(method)))
+        .bind(6, detectionId);
     if (auto status = stmt.run(); !status) return status;
     if (database_->changes() == 0) {
         return Status::failure(ErrorCode::NotFound, "Detection not found: " + detectionId);
     }
     return Status::success();
+}
+
+Result<std::int64_t> AnalysisRepository::updateVerificationForQuery(
+    const DetectionQuery& query, DetectionVerification state,
+    const std::optional<std::string>& verifiedBy, const std::optional<std::string>& verifiedAt,
+    const std::string& analystNote, DetectionReviewMethod method) {
+    using ResultType = Result<std::int64_t>;
+
+    // A sweep with no filter at all would rule on every detection in the
+    // database, across every case. Nothing in the UI can produce that, which is
+    // exactly why it is refused here rather than trusted not to happen.
+    if (!query.evidenceId && !query.analysisRunId && !query.caseId) {
+        return ResultType::failure(
+            ErrorCode::InvalidArgument,
+            "A bulk review must name the evidence, the run or the case it applies to");
+    }
+
+    // The WHERE clause and its bindings are shared with list() and count(), so
+    // the rows changed are exactly the rows the operator was shown a count of.
+    // SET parameters start at 10 to stay clear of the filter's fixed 1..8.
+    const bool clearing = state == DetectionVerification::Unreviewed;
+    auto prepared = database_->prepare(
+        "UPDATE detections SET verification_state = ?10, verified_by = ?11, verified_at = ?12, "
+        "analyst_note = ?13, review_method = ?14" +
+        buildDetectionWhere(query) + ";");
+    if (!prepared) return ResultType(prepared.error());
+
+    Statement stmt = prepared.take();
+    bindDetectionQuery(stmt, query);
+    stmt.bind(10, std::string(toString(state)))
+        .bindOptional(11, verifiedBy)
+        .bindOptional(12, verifiedAt)
+        .bind(13, analystNote)
+        .bindOptional(14, clearing || method == DetectionReviewMethod::NotReviewed
+                              ? std::optional<std::string>()
+                              : std::optional<std::string>(toString(method)));
+    if (auto status = stmt.run(); !status) return ResultType(status.error());
+    return ResultType::success(database_->changes());
+}
+
+Result<ReviewProgress> AnalysisRepository::reviewProgress(const std::string& analysisRunId) {
+    using ResultType = Result<ReviewProgress>;
+    auto prepared = database_->prepare(
+        "SELECT verification_state, review_method, count(*) FROM detections "
+        "WHERE analysis_run_id = ? GROUP BY verification_state, review_method;");
+    if (!prepared) return ResultType(prepared.error());
+
+    Statement stmt = prepared.take();
+    stmt.bind(1, analysisRunId);
+
+    ReviewProgress progress;
+    while (true) {
+        auto stepped = stmt.step();
+        if (!stepped) return ResultType(stepped.error());
+        if (!stepped.take()) break;
+
+        const auto state = detectionVerificationFromString(stmt.columnText(0));
+        const auto method = detectionReviewMethodFromString(stmt.columnText(1));
+        const std::int64_t count = stmt.columnInt64(2);
+
+        progress.total += count;
+        switch (state) {
+            case DetectionVerification::Unreviewed: progress.unreviewed += count; break;
+            case DetectionVerification::Confirmed:  progress.confirmed += count; break;
+            case DetectionVerification::Rejected:   progress.rejected += count; break;
+            case DetectionVerification::Uncertain:  progress.uncertain += count; break;
+        }
+        if (state != DetectionVerification::Unreviewed &&
+            method == DetectionReviewMethod::Individual) {
+            progress.reviewedIndividually += count;
+        }
+    }
+    return ResultType::success(progress);
 }
 
 Result<std::vector<DetectionTimelinePoint>> AnalysisRepository::detectionTimeline(

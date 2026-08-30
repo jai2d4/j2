@@ -244,7 +244,8 @@ Status AnalysisService::setVerification(const Detection& detection, DetectionVer
 
     if (auto status = repository_->updateVerification(
             detection.id, state, clearing ? std::nullopt : std::optional<std::string>(actor),
-            clearing ? std::nullopt : std::optional<std::string>(now), analystNote);
+            clearing ? std::nullopt : std::optional<std::string>(now), analystNote,
+            clearing ? DetectionReviewMethod::NotReviewed : DetectionReviewMethod::Individual);
         !status) {
         return status;
     }
@@ -272,6 +273,75 @@ Status AnalysisService::setVerification(const Detection& detection, DetectionVer
     auto audited = audit_->record(record);
     if (!audited) return Status(audited.error());
     return Status::success();
+}
+
+Result<std::int64_t> AnalysisService::setVerificationForQuery(
+    const DetectionQuery& query, DetectionVerification state, const std::string& analystNote,
+    const std::string& caseNumber, const std::string& evidenceNumber,
+    const std::string& filterDescription) {
+    using ResultType = Result<std::int64_t>;
+
+    if (!UserContext::current().can(Permission::CreateAnnotation)) {
+        return ResultType::failure(ErrorCode::PermissionDenied,
+                                   "You do not have permission to review detections");
+    }
+
+    const std::string actor = UserContext::current().actorName();
+    const std::string now = nowIso8601Utc();
+    const bool clearing = state == DetectionVerification::Unreviewed;
+
+    // Counted before the update, so what the audit record claims and what the
+    // operator was shown come from the same query rather than from two.
+    auto expected = repository_->countDetections(query);
+    if (!expected) return ResultType(expected.error());
+
+    auto changed = repository_->updateVerificationForQuery(
+        query, state, clearing ? std::nullopt : std::optional<std::string>(actor),
+        clearing ? std::nullopt : std::optional<std::string>(now), analystNote,
+        clearing ? DetectionReviewMethod::NotReviewed : DetectionReviewMethod::Bulk);
+    if (!changed) return ResultType(changed.error());
+    const std::int64_t count = changed.take();
+
+    // Clearing a bulk review is still an action worth recording: it changes what
+    // the case file says a human concluded.
+    AuditRecord record;
+    record.action = clearing ? AuditAction::DetectionMarkedUncertain
+                             : auditActionForVerification(state);
+    record.caseId = query.caseId.value_or(std::string());
+    record.caseNumber = caseNumber;
+    record.evidenceId = query.evidenceId.value_or(std::string());
+    record.evidenceNumber = evidenceNumber;
+    // The wording says "bulk" in the description itself, not only in the
+    // details, so a reader scanning the audit trail cannot mistake this for
+    // somebody having examined each one.
+    record.description = "Bulk review: " + std::to_string(count) + " detection" +
+                         (count == 1 ? "" : "s") + " marked " + toDisplayString(state) +
+                         (filterDescription.empty() ? "" : " (" + filterDescription + ")");
+    record.details = JsonValue::object()
+                         .set("bulk", true)
+                         .set("verification", toString(state))
+                         .set("review_method", toString(clearing ? DetectionReviewMethod::NotReviewed
+                                                                 : DetectionReviewMethod::Bulk))
+                         .set("detections_matched", expected.take())
+                         .set("detections_changed", count)
+                         .set("filter", filterDescription)
+                         .set("detections_retained", true);
+    if (query.analysisRunId) record.details.set("analysis_run_id", *query.analysisRunId);
+    if (query.classGroup) record.details.set("class_group", toString(*query.classGroup));
+    if (query.fromUs) record.details.set("from_us", *query.fromUs);
+    if (query.toUs) record.details.set("to_us", *query.toUs);
+    if (query.minimumConfidence > 0.0) {
+        record.details.set("minimum_confidence", query.minimumConfidence);
+    }
+    if (!analystNote.empty()) record.details.set("analyst_note", analystNote);
+
+    auto audited = audit_->record(record);
+    if (!audited) return ResultType(audited.error());
+    return ResultType::success(count);
+}
+
+Result<ReviewProgress> AnalysisService::reviewProgress(const std::string& analysisRunId) {
+    return repository_->reviewProgress(analysisRunId);
 }
 
 Result<std::vector<AnalysisRun>> AnalysisService::runsForEvidence(const std::string& evidenceId) {

@@ -17,6 +17,7 @@ class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
+class QProgressBar;
 class QPushButton;
 class QTreeWidget;
 
@@ -64,6 +65,26 @@ public:
     void markSelectedUncertain();
     void resetSelectedReview();
 
+    /// Moves the selection. `onlyUnreviewed` skips anything already ruled on,
+    /// which is what makes a second pass through a part-reviewed run practical.
+    void selectNext(bool onlyUnreviewed = false);
+    void selectPrevious();
+
+    /// Applies one decision to everything the filter currently matches, after
+    /// asking. Returns how many rows changed, or nothing if the operator
+    /// declined — a sweep is not something to do on a mis-keyed shortcut.
+    std::optional<std::int64_t> reviewAllMatching(DetectionVerification state,
+                                                  bool skipConfirmation = false);
+
+    /// Whether a decision moves to the next unreviewed detection by itself.
+    /// On by default: without it, reviewing is click, decide, click, decide,
+    /// and the clicking is most of the work.
+    void setAutoAdvance(bool on);
+    bool autoAdvance() const { return autoAdvance_; }
+
+    /// How much of the current run has been ruled on.
+    ReviewProgress progress() const { return progress_; }
+
     const std::vector<Detection>& loadedDetections() const { return detections_; }
     std::int64_t totalMatching() const { return totalMatching_; }
 
@@ -88,6 +109,11 @@ private:
     void reloadClassFilter();
     void applyVerification(DetectionVerification state);
     void updateActionState();
+    void refreshProgress();
+    /// The filter in words, for the confirmation dialog and the audit record —
+    /// one description, so what the operator agreed to and what is recorded
+    /// cannot drift apart.
+    QString filterDescription() const;
     /// How far from the playhead an analysed frame may be and still be drawn.
     /// Taken from the run's recorded sampling interval, never guessed from the
     /// spacing of the detections themselves.
@@ -113,6 +139,14 @@ private:
     QPushButton* uncertainButton_ = nullptr;
     QPushButton* resetButton_ = nullptr;
     QPushButton* jumpButton_ = nullptr;
+    QPushButton* bulkButton_ = nullptr;
+    QComboBox* bulkStateBox_ = nullptr;
+    QCheckBox* autoAdvanceBox_ = nullptr;
+    QProgressBar* progressBar_ = nullptr;
+    QLabel* progressLabel_ = nullptr;
+
+    ReviewProgress progress_;
+    bool autoAdvance_ = true;
 };
 
 }  // namespace trace::ui

@@ -30,6 +30,26 @@ const char* toDisplayString(DetectionVerification state);
 DetectionVerification detectionVerificationFromString(const std::string& text,
                                                       DetectionVerification fallback = DetectionVerification::Unreviewed);
 
+/// How a review decision was reached.
+///
+/// A confirmation made by someone looking at one box and a confirmation made by
+/// sweeping two thousand boxes in a time range are not the same claim about what
+/// a human examined. Presenting them identically in a report would overstate the
+/// second, so the distinction is recorded rather than reconstructed.
+enum class DetectionReviewMethod {
+    NotReviewed,
+    /// The analyst had this detection selected and ruled on it.
+    Individual,
+    /// One decision applied to everything matching a filter. The filter and the
+    /// count are in the audit record for the action.
+    Bulk,
+};
+
+const char* toString(DetectionReviewMethod method);
+const char* toDisplayString(DetectionReviewMethod method);
+DetectionReviewMethod detectionReviewMethodFromString(
+    const std::string& text, DetectionReviewMethod fallback = DetectionReviewMethod::NotReviewed);
+
 /// An axis-aligned box in normalised source-frame coordinates.
 ///
 /// Origin is the top-left of the frame; x/y/width/height are fractions of the
@@ -80,6 +100,7 @@ struct Detection {
     std::optional<std::int64_t> pixelHeight;
 
     DetectionVerification verification = DetectionVerification::Unreviewed;
+    DetectionReviewMethod reviewMethod = DetectionReviewMethod::NotReviewed;
     std::optional<std::string> verifiedBy;
     std::optional<std::string> verifiedAt;
     std::string analystNote;
