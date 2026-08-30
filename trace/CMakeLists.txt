@@ -37,9 +37,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/TraceWarnings.cmake)
 find_package(Threads REQUIRED)
 find_package(SQLite3 REQUIRED)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
-    libavformat libavcodec libavutil libswscale libswresample)
+# FFmpeg via pkg-config where it exists, headers and import libraries where it
+# does not. Both paths produce trace::ffmpeg and the same version strings.
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindFFmpegPortable.cmake)
 
 if(TRACE_WITH_OPENCV)
     find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
@@ -83,7 +83,7 @@ message(STATUS "  build type ......... ${CMAKE_BUILD_TYPE}")
 message(STATUS "  desktop app ........ ${TRACE_BUILD_DESKTOP}")
 message(STATUS "  tests .............. ${TRACE_BUILD_TESTS}")
 message(STATUS "  SQLite ............. ${SQLite3_VERSION}")
-message(STATUS "  FFmpeg (libav) ..... avformat ${FFMPEG_libavformat_VERSION}, avcodec ${FFMPEG_libavcodec_VERSION}")
+message(STATUS "  FFmpeg (libav) ..... avformat ${FFMPEG_libavformat_VERSION}, avcodec ${FFMPEG_libavcodec_VERSION} (via ${TRACE_FFMPEG_SOURCE})")
 if(TRACE_BUILD_DESKTOP)
     message(STATUS "  Qt ................. ${Qt6_VERSION}")
 endif()

@@ -25,7 +25,10 @@ trace_data/
 # Logs and caches
 logs/
 *.log
-thumbnails/
+# Anchored to the data root. Without the leading slash this pattern matched any
+# directory called "thumbnails" at any depth — including media/thumbnails/, whose
+# source files were silently excluded from the repository as a result.
+/data/**/thumbnails/
 .cache/
 
 # Secrets and local configuration
@@ -53,7 +56,11 @@ Thumbs.db
 # carry their own licences, and their digests are recorded in the model
 # catalogue rather than in git.
 third_party/onnxruntime/
-models/
+# Leading slash: the model directory at the repository root, not every directory
+# named "models". Unanchored, this pattern also excluded ai/detection/models/,
+# which is source code. The *.onnx rule below is what actually keeps model
+# binaries out, wherever they are put.
+/models/
 *.onnx
 *.trt
 *.engine

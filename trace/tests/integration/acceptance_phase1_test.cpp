@@ -654,7 +654,8 @@ int main(int argc, char** argv) {
     // the same override an operator uses for a shared model directory, so the
     // test exercises the real lookup path rather than a test-only one.
     if (std::getenv("TRACE_MODEL_DIR") == nullptr) {
-        setenv("TRACE_MODEL_DIR", trace::testing::modelsDirectory().string().c_str(), 0);
+        trace::testing::setEnvironmentIfUnset("TRACE_MODEL_DIR",
+                                              trace::testing::modelsDirectory().string());
     }
     QApplication application(argc, argv);
     trace::ui::applyTraceTheme(application);
