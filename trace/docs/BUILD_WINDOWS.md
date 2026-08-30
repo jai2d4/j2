@@ -35,8 +35,16 @@ C:\vcpkg\vcpkg install `
     qtmultimedia:x64-windows `
     ffmpeg[avformat,avcodec,avfilter,swscale,swresample]:x64-windows `
     sqlite3:x64-windows `
+    sqlcipher:x64-windows `
+    openssl:x64-windows `
     gtest:x64-windows
 ```
+
+`sqlcipher` and `openssl` are what encryption at rest needs. Both are optional: without
+them TRACE still builds and still opens unencrypted workspaces, and refuses encrypted ones
+with a stated reason rather than failing somewhere further down. Note that SQLCipher
+*replaces* SQLite rather than sitting alongside it — they export the same symbols, so the
+build links exactly one of the two.
 
 Qt is the largest item; expect a long first build. A prebuilt Qt from the official
 online installer works equally well — point CMake at it with

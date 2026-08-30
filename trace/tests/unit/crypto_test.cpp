@@ -80,6 +80,23 @@ std::vector<std::uint8_t> pattern(std::size_t bytes) {
     return data;
 }
 
+/// Everything below the key-derivation block needs the AEAD primitive, which a
+/// build without OpenSSL does not have. Key derivation and the random source are
+/// TRACE's own code and work in any build, so those stay plain TEST cases.
+class CryptoSealing : public ::testing::Test {
+protected:
+    void SetUp() override {
+        if (!crypto::available()) GTEST_SKIP() << "built without encryption support";
+    }
+};
+
+class ContainerRoundTrip : public ::testing::TestWithParam<std::size_t> {
+protected:
+    void SetUp() override {
+        if (!crypto::available()) GTEST_SKIP() << "built without encryption support";
+    }
+};
+
 // ------------------------------------------------------------ key derivation
 
 TEST(Crypto, SubkeyDerivationMatchesAnIndependentHkdfImplementation) {
@@ -137,7 +154,7 @@ TEST(Crypto, AKeyMustBeExactlyThirtyTwoBytes) {
 
 // ----------------------------------------------------------- sealed values
 
-TEST(Crypto, SealAndUnsealRoundTrip) {
+TEST_F(CryptoSealing, SealAndUnsealRoundTrip) {
     const auto key = keyOfBytes(7);
     const std::vector<std::uint8_t> plaintext = {'c', 'a', 's', 'e', ' ', 'k', 'e', 'y'};
 
@@ -148,7 +165,7 @@ TEST(Crypto, SealAndUnsealRoundTrip) {
     EXPECT_EQ(opened.take(), plaintext);
 }
 
-TEST(Crypto, SealingTheSameValueTwiceProducesDifferentCiphertext) {
+TEST_F(CryptoSealing, SealingTheSameValueTwiceProducesDifferentCiphertext) {
     // If it did not, the nonce would be fixed, and two values sealed under one
     // key would leak their relationship. This is the cheapest test that catches
     // the single most damaging mistake available in GCM.
@@ -161,7 +178,7 @@ TEST(Crypto, SealingTheSameValueTwiceProducesDifferentCiphertext) {
     EXPECT_NE(first.take(), second.take());
 }
 
-TEST(Crypto, UnsealRefusesTheWrongKey) {
+TEST_F(CryptoSealing, UnsealRefusesTheWrongKey) {
     const std::vector<std::uint8_t> plaintext = {1, 2, 3, 4};
     auto sealed = crypto::seal(keyOfBytes(1), plaintext, "aad");
     ASSERT_TRUE(sealed.ok());
@@ -171,7 +188,7 @@ TEST(Crypto, UnsealRefusesTheWrongKey) {
     EXPECT_EQ(opened.error().code(), ErrorCode::IntegrityFailure);
 }
 
-TEST(Crypto, UnsealRefusesDifferentAssociatedData) {
+TEST_F(CryptoSealing, UnsealRefusesDifferentAssociatedData) {
     // The associated data binds a sealed key to the case it belongs to. Lifting
     // one case's wrapped key into another case's row has to fail, and this is
     // what makes it fail.
@@ -184,7 +201,7 @@ TEST(Crypto, UnsealRefusesDifferentAssociatedData) {
     EXPECT_EQ(opened.error().code(), ErrorCode::IntegrityFailure);
 }
 
-TEST(Crypto, UnsealRefusesASingleFlippedBit) {
+TEST_F(CryptoSealing, UnsealRefusesASingleFlippedBit) {
     const auto key = keyOfBytes(5);
     auto sealed = crypto::seal(key, pattern(200), "aad");
     ASSERT_TRUE(sealed.ok());
@@ -198,15 +215,13 @@ TEST(Crypto, UnsealRefusesASingleFlippedBit) {
     }
 }
 
-TEST(Crypto, UnsealRefusesAValueTooShortToBeIntact) {
+TEST_F(CryptoSealing, UnsealRefusesAValueTooShortToBeIntact) {
     auto opened = crypto::unseal(keyOfBytes(1), std::vector<std::uint8_t>(4, 0), "");
     ASSERT_FALSE(opened.ok());
     EXPECT_EQ(opened.error().code(), ErrorCode::IntegrityFailure);
 }
 
 // --------------------------------------------------------------- containers
-
-class ContainerRoundTrip : public ::testing::TestWithParam<std::size_t> {};
 
 TEST_P(ContainerRoundTrip, PlaintextSurvivesExactly) {
     const std::size_t bytes = GetParam();
@@ -240,7 +255,7 @@ TEST_P(ContainerRoundTrip, PlaintextSurvivesExactly) {
 INSTANTIATE_TEST_SUITE_P(Sizes, ContainerRoundTrip,
                          ::testing::Values(0u, 1u, 1023u, 1024u, 1025u, 4096u, 5000u));
 
-TEST(Crypto, ContainerIsNotThePlaintext) {
+TEST_F(CryptoSealing, ContainerIsNotThePlaintext) {
     // The point of the exercise: what lands on disk must not contain the bytes
     // that went in.
     const auto key = keyOfBytes(13);
@@ -259,7 +274,7 @@ TEST(Crypto, ContainerIsNotThePlaintext) {
     EXPECT_TRUE(crypto::looksEncrypted(file.path()));
 }
 
-TEST(Crypto, RandomAccessReadsMatchTheSameOffsetsInThePlaintext) {
+TEST_F(CryptoSealing, RandomAccessReadsMatchTheSameOffsetsInThePlaintext) {
     // This is what lets FFmpeg seek. If it were wrong, a recording would decode
     // to the wrong frames rather than fail, which is the worst possible failure
     // mode for evidence.
@@ -293,7 +308,7 @@ TEST(Crypto, RandomAccessReadsMatchTheSameOffsetsInThePlaintext) {
     }
 }
 
-TEST(Crypto, ReadingPastTheEndReturnsNothingRatherThanFailing) {
+TEST_F(CryptoSealing, ReadingPastTheEndReturnsNothingRatherThanFailing) {
     const auto key = keyOfBytes(19);
     const auto plaintext = pattern(100);
     ScratchFile file("past-end");
@@ -317,7 +332,7 @@ TEST(Crypto, ReadingPastTheEndReturnsNothingRatherThanFailing) {
     EXPECT_EQ(partial.take(), 10u);
 }
 
-TEST(Crypto, AContainerCannotBeOpenedWithADifferentCaseKey) {
+TEST_F(CryptoSealing, AContainerCannotBeOpenedWithADifferentCaseKey) {
     const auto plaintext = pattern(2000);
     ScratchFile file("wrong-key");
     {
@@ -336,7 +351,7 @@ TEST(Crypto, AContainerCannotBeOpenedWithADifferentCaseKey) {
     EXPECT_EQ(got.error().code(), ErrorCode::IntegrityFailure);
 }
 
-TEST(Crypto, ATruncatedContainerFailsRatherThanReadingShort) {
+TEST_F(CryptoSealing, ATruncatedContainerFailsRatherThanReadingShort) {
     // A recording cut short must not present itself as a shorter recording.
     const auto key = keyOfBytes(23);
     const auto plaintext = pattern(4000);
@@ -363,7 +378,7 @@ TEST(Crypto, ATruncatedContainerFailsRatherThanReadingShort) {
     EXPECT_EQ(got.error().code(), ErrorCode::IntegrityFailure);
 }
 
-TEST(Crypto, ReorderingChunksIsDetected) {
+TEST_F(CryptoSealing, ReorderingChunksIsDetected) {
     // Each chunk is authenticated against its own index, so a container whose
     // chunks have been swapped is not a valid container at either position.
     const auto key = keyOfBytes(29);
@@ -401,7 +416,7 @@ TEST(Crypto, ReorderingChunksIsDetected) {
     EXPECT_EQ(got.error().code(), ErrorCode::IntegrityFailure);
 }
 
-TEST(Crypto, EditingTheHeaderInvalidatesTheWholeFile) {
+TEST_F(CryptoSealing, EditingTheHeaderInvalidatesTheWholeFile) {
     // The header is every chunk's associated data, so changing the declared
     // length — the obvious way to hide a truncation — breaks decryption rather
     // than producing a plausible shorter file.
@@ -431,7 +446,7 @@ TEST(Crypto, EditingTheHeaderInvalidatesTheWholeFile) {
     EXPECT_EQ(got.error().code(), ErrorCode::IntegrityFailure);
 }
 
-TEST(Crypto, WritingFewerBytesThanDeclaredIsAnError) {
+TEST_F(CryptoSealing, WritingFewerBytesThanDeclaredIsAnError) {
     // The header promises a length before the data is written. A caller that
     // stops early has produced a file that cannot be fully read, and finish()
     // is the last moment anyone can be told.
@@ -445,7 +460,7 @@ TEST(Crypto, WritingFewerBytesThanDeclaredIsAnError) {
     EXPECT_FALSE(finished.ok());
 }
 
-TEST(Crypto, AFileThatIsNotAContainerIsRefused) {
+TEST_F(CryptoSealing, AFileThatIsNotAContainerIsRefused) {
     ScratchFile file("not-a-container");
     {
         std::ofstream out(file.path(), std::ios::binary);
@@ -459,7 +474,7 @@ TEST(Crypto, AFileThatIsNotAContainerIsRefused) {
     EXPECT_FALSE(opened.ok());
 }
 
-TEST(Crypto, AnEmptyFileIsRefusedRatherThanReadAsAnEmptyContainer) {
+TEST_F(CryptoSealing, AnEmptyFileIsRefusedRatherThanReadAsAnEmptyContainer) {
     ScratchFile file("empty");
     { std::ofstream out(file.path(), std::ios::binary); }
     crypto::EncryptedFileReader reader;
@@ -467,7 +482,7 @@ TEST(Crypto, AnEmptyFileIsRefusedRatherThanReadAsAnEmptyContainer) {
     EXPECT_FALSE(opened.ok());
 }
 
-TEST(Crypto, TwoContainersOfTheSamePlaintextDifferOnDisk) {
+TEST_F(CryptoSealing, TwoContainersOfTheSamePlaintextDifferOnDisk) {
     // Each file derives its own key from a fresh salt, so identical evidence
     // ingested into two cases does not produce identical ciphertext — which
     // would otherwise reveal that the two are the same recording.

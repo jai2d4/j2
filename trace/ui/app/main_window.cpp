@@ -173,6 +173,10 @@ void MainWindow::buildMenus() {
     });
 
     fileMenu->addSeparator();
+    encryptWorkspaceAction_ = fileMenu->addAction(QStringLiteral("&Encrypt this workspace…"));
+    connect(encryptWorkspaceAction_, &QAction::triggered, this,
+            &MainWindow::encryptWorkspace);
+
     auto* settings = fileMenu->addAction(QStringLiteral("&Settings…"));
     connect(settings, &QAction::triggered, this, [this] {
         SettingsDialog dialog(context_, this);
@@ -905,6 +909,46 @@ void MainWindow::showAbout() {
             "<p style='color:#8d99a4'>Qt %3 · SQLite · FFmpeg</p>")
             .arg(QString::fromUtf8(kApplicationVersion), QString::fromUtf8(kPhase),
                  QString::fromUtf8(qVersion())));
+}
+
+void MainWindow::encryptWorkspace() {
+    if (!context_->isInitialised()) return;
+
+    const WorkspaceState state = context_->workspace();
+    if (!state.buildSupportsEncryption) {
+        QMessageBox::information(
+            this, QStringLiteral("Encryption unavailable"),
+            QStringLiteral("This build of TRACE was built without encryption support, so it "
+                           "cannot encrypt a workspace. The evidence is unaffected."));
+        return;
+    }
+    if (state.encrypted && state.databaseEncrypted) {
+        QMessageBox::information(this, QStringLiteral("Already encrypted"),
+                                 QStringLiteral("This workspace is already stored encrypted."));
+        return;
+    }
+
+    // Conversion rewrites every managed original and re-keys the database, so
+    // it cannot run underneath an open workspace. Saying so plainly beats
+    // starting it and failing part way through.
+    const auto answer = QMessageBox::question(
+        this, QStringLiteral("Encrypt this workspace"),
+        QStringLiteral(
+            "Every recording in this workspace will be rewritten as an encrypted container and "
+            "the case database will be re-keyed. Each item is verified against the digest "
+            "recorded when it was ingested before its original is replaced, and a mismatch "
+            "stops the conversion with that file untouched.\n\n"
+            "This cannot run while the workspace is open. TRACE will close; run the conversion "
+            "from a fresh start, where you will be asked to set the password.\n\n"
+            "There is no way to recover a lost password. Close TRACE now?"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (answer != QMessageBox::Yes) return;
+
+    QMessageBox::information(
+        this, QStringLiteral("Encrypt this workspace"),
+        QStringLiteral("Start TRACE again with --encrypt-workspace to convert this data "
+                       "directory. Nothing has been changed yet."));
+    close();
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {

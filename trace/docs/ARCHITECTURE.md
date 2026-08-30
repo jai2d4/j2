@@ -93,6 +93,14 @@ playing. The arithmetic that turns a device's count into a media position lives 
 `media/audio/AudioClock` — no Qt, so it is testable on a machine with no sound card. See
 `docs/AUDIO.md`.
 
+Encryption sits underneath all of it rather than beside it. `core/security/crypto`
+provides the container format and the key hierarchy; `core/security/WorkspaceKeys` holds
+the master key for an open session and derives a key per case; `media/ffmpeg/EncryptedMediaIo`
+lets FFmpeg read a container through a custom `AVIOContext` so no plaintext copy is ever
+written to disk. Every path that decodes, hashes or exports evidence takes a
+`const crypto::SecretKey*`, where null means "this file is not encrypted" — a workspace can
+hold both forms at once, and readers decide per file by looking at it. See `docs/ENCRYPTION.md`.
+
 Two hazards this design has already hit, both now covered by fixes and tests:
 
 - A background task that finishes *after* the context has shut down must not call into

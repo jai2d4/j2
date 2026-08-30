@@ -15,6 +15,7 @@ add_library(trace_ui STATIC
 
     app/application_context.cpp
     auth/sign_in_dialog.cpp
+    auth/unlock_dialog.cpp
     audio/audio_output.cpp
     app/main_window.cpp
 

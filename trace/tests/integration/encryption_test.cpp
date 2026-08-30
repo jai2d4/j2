@@ -14,6 +14,12 @@
 #include <vector>
 
 #include "core/database/database.h"
+#include "core/common/uuid.h"
+#include "core/security/user_context.h"
+#include "core/services/case_service.h"
+#include "core/services/evidence_service.h"
+#include "core/services/integrity_service.h"
+#include "core/services/workspace_service.h"
 #include "media/ffmpeg/audio_decoder.h"
 #include "media/ffmpeg/media_probe.h"
 #include "media/ffmpeg/video_decoder.h"
@@ -35,7 +41,17 @@ std::string fileContents(const std::filesystem::path& path) {
 
 // ------------------------------------------------------------------ keyring
 
-TEST(Keyring, CreatesAWorkspaceAndUnlocksItAgain) {
+/// The keyring wraps its entries with the AEAD primitive, so none of this works
+/// in a build without encryption support. Skipping is the honest outcome there:
+/// the feature is absent, not broken.
+class KeyringTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        if (!crypto::available()) GTEST_SKIP() << "built without encryption support";
+    }
+};
+
+TEST_F(KeyringTest, CreatesAWorkspaceAndUnlocksItAgain) {
     testing::TemporaryDirectory root("keyring-create");
     ASSERT_FALSE(Keyring::exists(root.path()));
 
@@ -51,7 +67,7 @@ TEST(Keyring, CreatesAWorkspaceAndUnlocksItAgain) {
     ASSERT_TRUE(unlocked.ok()) << unlocked.error().toString();
 }
 
-TEST(Keyring, TheSameMasterKeyComesBackEveryTime) {
+TEST_F(KeyringTest, TheSameMasterKeyComesBackEveryTime) {
     // If it did not, a database keyed on Monday would not open on Tuesday.
     testing::TemporaryDirectory root("keyring-stable");
     auto created = Keyring::create(root.path(), kOperator, kPassword);
@@ -67,7 +83,7 @@ TEST(Keyring, TheSameMasterKeyComesBackEveryTime) {
     EXPECT_EQ(first.take().toHexForSqlCipher(), second.take().toHexForSqlCipher());
 }
 
-TEST(Keyring, RefusesTheWrongPasswordAndAnUnknownOperatorIdentically) {
+TEST_F(KeyringTest, RefusesTheWrongPasswordAndAnUnknownOperatorIdentically) {
     // Identical answers, because a different one for an unknown username turns
     // this dialog into a way to list who works here.
     testing::TemporaryDirectory root("keyring-wrong");
@@ -83,7 +99,7 @@ TEST(Keyring, RefusesTheWrongPasswordAndAnUnknownOperatorIdentically) {
     EXPECT_EQ(wrongPassword.error().message(), unknownUser.error().message());
 }
 
-TEST(Keyring, HoldsNoPasswordAndNoMasterKeyOnDisk) {
+TEST_F(KeyringTest, HoldsNoPasswordAndNoMasterKeyOnDisk) {
     testing::TemporaryDirectory root("keyring-opaque");
     auto created = Keyring::create(root.path(), kOperator, kPassword);
     ASSERT_TRUE(created.ok());
@@ -104,7 +120,7 @@ TEST(Keyring, HoldsNoPasswordAndNoMasterKeyOnDisk) {
     EXPECT_NE(raw.find(kOperator), std::string::npos);
 }
 
-TEST(Keyring, ASecondOperatorGetsTheSameMasterKeyWithoutSharingAPassword) {
+TEST_F(KeyringTest, ASecondOperatorGetsTheSameMasterKeyWithoutSharingAPassword) {
     testing::TemporaryDirectory root("keyring-second");
     auto created = Keyring::create(root.path(), kOperator, kPassword);
     ASSERT_TRUE(created.ok());
@@ -126,7 +142,7 @@ TEST(Keyring, ASecondOperatorGetsTheSameMasterKeyWithoutSharingAPassword) {
     EXPECT_FALSE(keyring.unlock(kOperator, "a different long passphrase").ok());
 }
 
-TEST(Keyring, ChangingAPasswordKeepsTheMasterKeyAndSoKeepsTheData) {
+TEST_F(KeyringTest, ChangingAPasswordKeepsTheMasterKeyAndSoKeepsTheData) {
     // The whole reason for wrapping: a password change must not require
     // re-encrypting a case load.
     testing::TemporaryDirectory root("keyring-change");
@@ -146,7 +162,7 @@ TEST(Keyring, ChangingAPasswordKeepsTheMasterKeyAndSoKeepsTheData) {
     EXPECT_EQ(after.take().toHexForSqlCipher(), keyBefore);
 }
 
-TEST(Keyring, RefusesToRemoveTheLastOperator) {
+TEST_F(KeyringTest, RefusesToRemoveTheLastOperator) {
     testing::TemporaryDirectory root("keyring-last");
     auto created = Keyring::create(root.path(), kOperator, kPassword);
     ASSERT_TRUE(created.ok());
@@ -164,7 +180,7 @@ TEST(Keyring, RefusesToRemoveTheLastOperator) {
     EXPECT_EQ(keyring.operatorCount(), 1u);
 }
 
-TEST(Keyring, RefusesToOverwriteAnExistingKeyring) {
+TEST_F(KeyringTest, RefusesToOverwriteAnExistingKeyring) {
     // Overwriting is not a recoverable mistake: it destroys the only copies of
     // the master key.
     testing::TemporaryDirectory root("keyring-overwrite");
@@ -174,14 +190,14 @@ TEST(Keyring, RefusesToOverwriteAnExistingKeyring) {
     EXPECT_EQ(again.error().code(), ErrorCode::AlreadyExists);
 }
 
-TEST(Keyring, RefusesAShortPassword) {
+TEST_F(KeyringTest, RefusesAShortPassword) {
     testing::TemporaryDirectory root("keyring-short");
     auto created = Keyring::create(root.path(), kOperator, "short");
     EXPECT_FALSE(created.ok());
     EXPECT_FALSE(Keyring::exists(root.path())) << "a rejected password left a keyring behind";
 }
 
-TEST(Keyring, RefusesATamperedFileRatherThanReadingWhatItCan) {
+TEST_F(KeyringTest, RefusesATamperedFileRatherThanReadingWhatItCan) {
     testing::TemporaryDirectory root("keyring-tampered");
     ASSERT_TRUE(Keyring::create(root.path(), kOperator, kPassword).ok());
     const auto path = Keyring::pathFor(root.path());
@@ -212,7 +228,7 @@ TEST(Keyring, RefusesATamperedFileRatherThanReadingWhatItCan) {
     EXPECT_FALSE(Keyring::load(root.path()).ok());
 }
 
-TEST(Keyring, AWrappedKeyCannotBeMovedBetweenWorkspaces) {
+TEST_F(KeyringTest, AWrappedKeyCannotBeMovedBetweenWorkspaces) {
     // The workspace identifier is bound into every wrap, so lifting an entry
     // from a keyring you can open into one you cannot does not carry access
     // with it.
@@ -527,6 +543,296 @@ TEST_F(EncryptedMedia, APlainFileStillOpensWhenAKeyIsOffered) {
     auto opened = VideoDecoder::open(testing::sampleVideoPath(), &secret);
     ASSERT_TRUE(opened.ok()) << opened.error().toString();
     EXPECT_TRUE(opened.take()->nextFrame().ok());
+}
+
+// ------------------------------------------------ an encrypted workspace, used
+
+/// The services an operator's session actually holds, wired the way
+/// ApplicationContext wires them, against an encrypted workspace.
+struct EncryptedStack {
+    testing::TemporaryDirectory root;
+    std::shared_ptr<WorkspaceKeys> keys = std::make_shared<WorkspaceKeys>();
+    std::shared_ptr<Database> database;
+    std::unique_ptr<StorageLayout> layout;
+    std::shared_ptr<AuditService> audit;
+    std::unique_ptr<CaseService> cases;
+    std::unique_ptr<EvidenceService> evidence;
+    std::unique_ptr<IntegrityService> integrity;
+
+    explicit EncryptedStack(const std::string& prefix) : root(prefix) {}
+
+    bool open() {
+        layout = std::make_unique<StorageLayout>(root.path());
+        if (!layout->ensureDataRoot()) return false;
+        auto keyring = WorkspaceService::createEncryptedWorkspace(root.path(), kOperator, kPassword);
+        if (!keyring) return false;
+        if (!WorkspaceService::unlock(root.path(), kOperator, kPassword, *keys)) return false;
+
+        auto masterKey = keys->masterKey();
+        if (!masterKey) return false;
+        auto opened = Database::openEncrypted(layout->databasePath(), masterKey.take());
+        if (!opened) return false;
+        database = opened.take();
+        if (!MigrationRunner::applyAll(*database)) return false;
+
+        audit = std::make_shared<AuditService>(database);
+        cases = std::make_unique<CaseService>(database, *layout, audit);
+        evidence = std::make_unique<EvidenceService>(
+            database, *layout, audit, std::make_shared<FFmpegMetadataExtractor>(), keys);
+        integrity = std::make_unique<IntegrityService>(database, *layout, audit, keys);
+        return true;
+    }
+};
+
+class EncryptedWorkspace : public ::testing::Test {
+protected:
+    void SetUp() override {
+        if (!crypto::available()) GTEST_SKIP() << "built without encryption support";
+        UserAccount account = UserContext::current().account();
+        account.role = UserRole::Administrator;
+        if (account.username.empty()) account.username = "test-operator";
+        if (account.id.empty()) account.id = generateUuid();
+        UserContext::current().setAuthenticatedAccount(account);
+    }
+
+    /// Copies the sample recording somewhere an ingestion can take it from.
+    static std::filesystem::path stageSource(const std::filesystem::path& directory) {
+        std::filesystem::create_directories(directory);
+        const auto source = directory / "sample.mp4";
+        std::filesystem::copy_file(testing::sampleVideoPath(), source,
+                                   std::filesystem::copy_options::overwrite_existing);
+        return source;
+    }
+};
+
+TEST_F(EncryptedWorkspace, IngestedEvidenceIsOnDiskEncryptedAndStillVerifies) {
+    // The whole feature in one test: evidence goes in, what lands on disk is not
+    // the recording, and the digest TRACE recorded is still the digest of the
+    // recording.
+    EncryptedStack stack("encrypted-workspace");
+    ASSERT_TRUE(stack.open());
+
+    CaseDraft draft;
+    draft.caseNumber = "CASE-ENC-1";
+    draft.title = "Encrypted at rest";
+    draft.investigator = "A. Analyst";
+    auto created = stack.cases->createCase(draft);
+    ASSERT_TRUE(created.ok()) << created.error().toString();
+    const Case caseRecord = created.take();
+
+    const auto source = stageSource(stack.root.path() / "incoming");
+    const std::string sourceDigest = hashFile(source).take();
+
+    IngestRequest request;
+    request.caseId = caseRecord.id;
+    request.sourcePath = source;
+    auto ingested = stack.evidence->ingest(request);
+    ASSERT_TRUE(ingested.ok()) << ingested.error().toString();
+    const Evidence evidence = ingested.take().evidence;
+
+    // The digest recorded is the digest of the recording, not of the container.
+    EXPECT_EQ(evidence.sha256, sourceDigest);
+
+    // What is on disk is a container, and does not contain the recording.
+    const auto stored = stack.evidence->absolutePath(evidence);
+    ASSERT_TRUE(std::filesystem::exists(stored));
+    EXPECT_TRUE(crypto::looksEncrypted(stored));
+
+    const std::string plainSource = fileContents(source);
+    const std::string onDisk = fileContents(stored);
+    ASSERT_GT(plainSource.size(), 1024u);
+    // Compare a distinctive slice rather than the whole file: a container that
+    // happened to share a few bytes would not prove anything either way.
+    EXPECT_EQ(onDisk.find(plainSource.substr(512, 512)), std::string::npos)
+        << "the recording is readable inside the container";
+
+    // And an integrity check still passes, because it decrypts before hashing.
+    auto verified = stack.integrity->verify(evidence, caseRecord.caseNumber);
+    ASSERT_TRUE(verified.ok()) << verified.error().toString();
+    const IntegrityCheck check = verified.take();
+    EXPECT_TRUE(check.verified);
+    EXPECT_EQ(check.computedSha256, sourceDigest);
+}
+
+TEST_F(EncryptedWorkspace, IngestionRefusesToRunWhileTheWorkspaceIsLocked) {
+    // The failure that matters: locking must not fall back to writing evidence
+    // in the clear into a workspace whose operator believes it is encrypted.
+    EncryptedStack stack("encrypted-locked");
+    ASSERT_TRUE(stack.open());
+
+    CaseDraft draft;
+    draft.caseNumber = "CASE-ENC-2";
+    draft.title = "Locked";
+    draft.investigator = "A. Analyst";
+    auto created = stack.cases->createCase(draft);
+    ASSERT_TRUE(created.ok());
+    const Case caseRecord = created.take();
+
+    const auto source = stageSource(stack.root.path() / "incoming2");
+    stack.keys->lock();
+
+    IngestRequest request;
+    request.caseId = caseRecord.id;
+    request.sourcePath = source;
+    auto ingested = stack.evidence->ingest(request);
+    ASSERT_FALSE(ingested.ok()) << "evidence was ingested into a locked workspace";
+    EXPECT_EQ(ingested.error().code(), ErrorCode::PermissionDenied);
+
+    // Nothing was written.
+    auto listed = stack.evidence->listForCase(caseRecord.id);
+    ASSERT_TRUE(listed.ok());
+    EXPECT_TRUE(listed.take().empty());
+}
+
+TEST_F(EncryptedWorkspace, TamperedEvidenceFailsVerificationRatherThanBeingSilentlyRepaired) {
+    EncryptedStack stack("encrypted-tamper");
+    ASSERT_TRUE(stack.open());
+
+    CaseDraft draft;
+    draft.caseNumber = "CASE-ENC-3";
+    draft.title = "Tampering";
+    draft.investigator = "A. Analyst";
+    auto created = stack.cases->createCase(draft);
+    ASSERT_TRUE(created.ok());
+    const Case caseRecord = created.take();
+
+    IngestRequest request;
+    request.caseId = caseRecord.id;
+    request.sourcePath = stageSource(stack.root.path() / "incoming3");
+    auto ingested = stack.evidence->ingest(request);
+    ASSERT_TRUE(ingested.ok());
+    const Evidence evidence = ingested.take().evidence;
+    const std::string digestBefore = evidence.sha256;
+
+    // Flip a byte well inside the ciphertext.
+    const auto stored = stack.evidence->absolutePath(evidence);
+    std::filesystem::permissions(stored, std::filesystem::perms::owner_write,
+                                 std::filesystem::perm_options::add);
+    {
+        std::fstream file(stored, std::ios::binary | std::ios::in | std::ios::out);
+        ASSERT_TRUE(file.good());
+        file.seekg(static_cast<std::streamoff>(crypto::kContainerHeaderBytes + 100));
+        char byte = 0;
+        file.read(&byte, 1);
+        byte = static_cast<char>(byte ^ 0x01);
+        file.seekp(static_cast<std::streamoff>(crypto::kContainerHeaderBytes + 100));
+        file.write(&byte, 1);
+    }
+
+    auto verified = stack.integrity->verify(evidence, caseRecord.caseNumber);
+    // Either outcome is acceptable as an answer -- a failed check or a hard
+    // error -- but it must never come back verified, and the stored digest must
+    // be exactly what it was.
+    if (verified.ok()) {
+        EXPECT_FALSE(verified.take().verified);
+    }
+    auto reloaded = stack.evidence->findById(evidence.id);
+    ASSERT_TRUE(reloaded.ok());
+    const auto after = reloaded.take();
+    ASSERT_TRUE(after.has_value());
+    EXPECT_EQ(after->sha256, digestBefore) << "the stored digest was rewritten by a failed check";
+}
+
+TEST_F(EncryptedWorkspace, AnExistingWorkspaceConvertsWithoutLosingAnything) {
+    // The path every existing installation has to take. Ingest in the clear,
+    // convert, then check the same evidence still verifies against the same
+    // digest and the case survived.
+    testing::TemporaryDirectory root("convert-workspace");
+    std::string evidenceId;
+    std::string caseId;
+    std::string caseNumber = "CASE-CONV-1";
+    std::string digest;
+
+    {
+        auto stack = testing::TestStack::create(root.path());
+        CaseDraft draft;
+        draft.caseNumber = caseNumber;
+        draft.title = "Conversion";
+        draft.investigator = "A. Analyst";
+        auto created = stack.cases->createCase(draft);
+        ASSERT_TRUE(created.ok()) << created.error().toString();
+        caseId = created.take().id;
+
+        IngestRequest request;
+        request.caseId = caseId;
+        request.sourcePath = stageSource(root.path() / "incoming");
+        auto ingested = stack.evidence->ingest(request);
+        ASSERT_TRUE(ingested.ok()) << ingested.error().toString();
+        const Evidence evidence = ingested.take().evidence;
+        evidenceId = evidence.id;
+        digest = evidence.sha256;
+
+        // Before conversion the recording is stored as itself.
+        EXPECT_FALSE(crypto::looksEncrypted(stack.evidence->absolutePath(evidence)));
+    }
+
+    ASSERT_FALSE(WorkspaceService::inspect(root.path()).encrypted);
+    auto converted = WorkspaceService::encryptExistingWorkspace(root.path(), kOperator, kPassword);
+    ASSERT_TRUE(converted.ok()) << converted.error().toString();
+
+    const WorkspaceState state = WorkspaceService::inspect(root.path());
+    EXPECT_TRUE(state.encrypted);
+    EXPECT_TRUE(state.databaseEncrypted);
+    EXPECT_FALSE(state.conversionIncomplete());
+
+    // Reopen it the way the application would, and check the case and its
+    // evidence came through unchanged.
+    WorkspaceKeys keys;
+    ASSERT_TRUE(WorkspaceService::unlock(root.path(), kOperator, kPassword, keys).ok());
+    StorageLayout layout(root.path());
+    auto opened = Database::openEncrypted(layout.databasePath(), keys.masterKey().take());
+    ASSERT_TRUE(opened.ok()) << opened.error().toString();
+    auto database = opened.take();
+
+    auto audit = std::make_shared<AuditService>(database);
+    auto keysPtr = std::make_shared<WorkspaceKeys>();
+    ASSERT_TRUE(WorkspaceService::unlock(root.path(), kOperator, kPassword, *keysPtr).ok());
+    EvidenceService evidenceService(database, layout, audit,
+                                    std::make_shared<FFmpegMetadataExtractor>(), keysPtr);
+    IntegrityService integrityService(database, layout, audit, keysPtr);
+
+    auto found = evidenceService.findById(evidenceId);
+    ASSERT_TRUE(found.ok());
+    const auto evidence = found.take();
+    ASSERT_TRUE(evidence.has_value());
+    EXPECT_EQ(evidence->sha256, digest) << "conversion changed the recorded digest";
+    EXPECT_TRUE(crypto::looksEncrypted(evidenceService.absolutePath(*evidence)));
+
+    auto verified = integrityService.verify(*evidence, caseNumber);
+    ASSERT_TRUE(verified.ok()) << verified.error().toString();
+    const IntegrityCheck check = verified.take();
+    EXPECT_TRUE(check.verified) << "converted evidence no longer verifies";
+    EXPECT_EQ(check.computedSha256, digest);
+
+    // The migration is not re-applied on the converted database, and the audit
+    // trail came across rather than starting again.
+    auto auditRows = database->queryInt64("SELECT count(*) FROM audit_events;");
+    ASSERT_TRUE(auditRows.ok());
+    EXPECT_GT(auditRows.take(), 0) << "the audit trail did not survive conversion";
+}
+
+TEST_F(EncryptedWorkspace, ConversionIsSafeToRunTwice) {
+    // Which is what makes it resumable: an interrupted run is finished by
+    // running it again, and a finished one is not damaged by it.
+    testing::TemporaryDirectory root("convert-twice");
+    {
+        auto stack = testing::TestStack::create(root.path());
+        CaseDraft draft;
+        draft.caseNumber = "CASE-CONV-2";
+        draft.title = "Twice";
+        draft.investigator = "A. Analyst";
+        auto created = stack.cases->createCase(draft);
+        ASSERT_TRUE(created.ok());
+        IngestRequest request;
+        request.caseId = created.take().id;
+        request.sourcePath = stageSource(root.path() / "incoming");
+        ASSERT_TRUE(stack.evidence->ingest(request).ok());
+    }
+
+    ASSERT_TRUE(WorkspaceService::encryptExistingWorkspace(root.path(), kOperator, kPassword).ok());
+    auto again = WorkspaceService::encryptExistingWorkspace(root.path(), kOperator, kPassword);
+    EXPECT_TRUE(again.ok()) << again.error().toString();
+    EXPECT_TRUE(WorkspaceService::inspect(root.path()).databaseEncrypted);
 }
 
 }  // namespace

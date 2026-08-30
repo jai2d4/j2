@@ -93,6 +93,16 @@ if(TRACE_BUILD_DESKTOP)
         DISCOVERY_TIMEOUT 60
         PROPERTIES LABELS unit)
 
+    # The prompt in front of an encrypted workspace, driven as a real dialog.
+    add_executable(trace_unlock_tests unit/unlock_dialog_test.cpp)
+    target_link_libraries(trace_unlock_tests PRIVATE
+        trace_ui trace_core trace_media trace_ai trace_analysis trace_reporting
+        Qt6::Core Qt6::Gui Qt6::Widgets GTest::gtest)
+    trace_apply_common_options(trace_unlock_tests)
+    gtest_discover_tests(trace_unlock_tests
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES LABELS unit)
+
     # Phase 1: object detection driven through the same real window.
     add_executable(trace_acceptance_phase1_test integration/acceptance_phase1_test.cpp)
     target_link_libraries(trace_acceptance_phase1_test PRIVATE

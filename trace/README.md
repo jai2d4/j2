@@ -55,7 +55,9 @@ analyst's.
 | **GPU inference (CUDA)** | **Written and guarded, never executed here** — this environment has no GPU; see `docs/PHASE1_TESTING.md` |
 | **Face recognition, identity, plates, tracking, re-identification** | **Not implemented, by design** — see `docs/ROADMAP.md` |
 
-| **Encryption at rest** | **Not implemented** — the case database is a plain SQLite file; local accounts gate the application, not the data. See `docs/AUTHENTICATION.md` §6 |
+| **Encryption at rest** — case database and evidence | Working | SQLCipher for the database, AES-256-GCM containers for the recordings. Derived assets are still in the clear; see `docs/ENCRYPTION.md` §6 |
+| Encrypting an existing workspace | Working | `--encrypt-workspace`; resumable, and verified against each item's ingestion digest before its original is replaced |
+| More than one operator per encrypted workspace | Working | Each holds their own wrapped copy of the master key; a password change re-wraps 32 bytes, not the case load |
 
 Anything not listed as working is either absent or shown disabled with the reason.
 There are no placeholder screens and no simulated results.
@@ -270,6 +272,7 @@ as importantly, what was not.
 | [docs/AUDIO.md](docs/AUDIO.md) | Audio decoding, the waveform, which clock playback follows, and what is unproven |
 | [docs/PHASE3_TESTING.md](docs/PHASE3_TESTING.md) | Phase 3 coverage and the gap where a sound card would be |
 | [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) | How passwords are stored, why not SHA-256, and what local accounts do *not* protect |
+| [docs/ENCRYPTION.md](docs/ENCRYPTION.md) | What is encrypted, the key hierarchy, and §6: what encryption at rest does *not* protect |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What Phase 2+ adds and the extension points waiting for it |
 
 ---

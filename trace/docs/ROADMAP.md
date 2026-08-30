@@ -103,8 +103,18 @@ Still open from this area:
 - ~~**Local accounts**~~ — built. PBKDF2-HMAC-SHA256, lockout, an audited sign-in and
   a role gate with teeth. See `docs/AUTHENTICATION.md`, whose §6 lists what it
   deliberately does not protect.
-- **Encrypted storage** — the managed layout and relative paths already make a per-case
-  encrypted container feasible without touching the domain.
+- ~~**Encrypted storage**~~ — built. SQLCipher for the case database, AES-256-GCM
+  containers for the evidence, and a keyring that lets several operators hold the same
+  workspace key without sharing a password. See `docs/ENCRYPTION.md`, whose §6 lists
+  what it does not protect.
+- **Encrypt derived assets** — the largest remaining gap in that §6. Thumbnails,
+  waveforms and exported frames are still written in the clear, and a thumbnail is a
+  frame of the recording. `DerivedAssetService::registerAsset` is the one place every
+  derived artefact passes through, so this is a change at a single choke point rather
+  than a sweep.
+- **Windows encrypted builds** — SQLCipher and libcrypto are both in vcpkg and nothing
+  in the code is platform-specific beyond the random source, but CI does not yet build
+  Windows with `TRACE_WITH_ENCRYPTION=ON`, so that path is written and unproven.
 
 ---
 
