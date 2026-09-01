@@ -1,5 +1,6 @@
 """Environment configuration — loads .env into typed settings."""
 from functools import lru_cache
+from typing import Optional
 
 from pydantic_settings import BaseSettings
 
@@ -10,6 +11,12 @@ class Settings(BaseSettings):
     # so misconfiguration fails loudly at startup instead of at first request.
     GEMINI_API_KEY: str
     GEMINI_MODEL: str = "gemini-3.5-flash"
+
+    # --- Auth ---
+    # Shared API key required via the X-API-Key header on every /api/v1/scout/*
+    # and /api/v1/athletes|evaluations route. Unset (the local-dev default)
+    # disables the check entirely — set this before exposing the app publicly.
+    API_KEY: Optional[str] = None
 
     # --- PostgreSQL ---
     POSTGRES_HOST: str = "localhost"

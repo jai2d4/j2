@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Position threshold matrix (the hard-coded eval logic tables)
 -- Heights stored in inches, speeds in seconds for range math.
 -- ------------------------------------------------------------
-CREATE TABLE position_thresholds (
+CREATE TABLE IF NOT EXISTS position_thresholds (
     id              SERIAL PRIMARY KEY,
     position        VARCHAR(4)  NOT NULL,          -- QB, RB, WR, DB, LB, DE, DL, OL, TE
     tier            VARCHAR(16) NOT NULL,          -- D1_FBS, D1_FCS, D2, D3, NAIA, JUCO
@@ -32,7 +32,7 @@ CREATE TABLE position_thresholds (
 -- ------------------------------------------------------------
 -- Athletes
 -- ------------------------------------------------------------
-CREATE TABLE athletes (
+CREATE TABLE IF NOT EXISTS athletes (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     first_name      VARCHAR(64) NOT NULL,
     last_name       VARCHAR(64) NOT NULL,
@@ -53,13 +53,29 @@ CREATE TABLE athletes (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_athletes_position ON athletes (position);
-CREATE INDEX idx_athletes_grad_year ON athletes (grad_year);
+-- updated_at only had a DEFAULT, which fires on INSERT and never again, so the
+-- column silently stayed equal to created_at for the life of the row. A trigger
+-- rather than application code: anything that writes to this table — the API, a
+-- migration, a DBA at a psql prompt — should leave a truthful timestamp behind.
+CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS athletes_set_updated_at ON athletes;
+CREATE TRIGGER athletes_set_updated_at
+    BEFORE UPDATE ON athletes
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_athletes_position ON athletes (position);
+CREATE INDEX IF NOT EXISTS idx_athletes_grad_year ON athletes (grad_year);
 
 -- ------------------------------------------------------------
 -- Film uploads (Module 1)
 -- ------------------------------------------------------------
-CREATE TABLE film_uploads (
+CREATE TABLE IF NOT EXISTS film_uploads (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     athlete_id      UUID REFERENCES athletes(id) ON DELETE CASCADE,
     filename        VARCHAR(255) NOT NULL,
@@ -71,33 +87,35 @@ CREATE TABLE film_uploads (
     uploaded_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_film_athlete ON film_uploads (athlete_id);
+CREATE INDEX IF NOT EXISTS idx_film_athlete ON film_uploads (athlete_id);
 
 -- ------------------------------------------------------------
 -- Evaluations / Truth Reports (Modules 2–4)
 -- ------------------------------------------------------------
-CREATE TABLE evaluations (
+CREATE TABLE IF NOT EXISTS evaluations (
     id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     athlete_id            UUID NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
     film_id               UUID REFERENCES film_uploads(id) ON DELETE SET NULL,
     position_evaluated    VARCHAR(4) NOT NULL,
     projected_tier        VARCHAR(16),             -- highest tier where all hard metrics pass
-    physical_projection   JSONB,                   -- raw Gemini structured output
-    explosive_traits      JSONB,
-    mechanics_grade       NUMERIC(3,1) CHECK (mechanics_grade BETWEEN 0 AND 10),
-    situational_attributes JSONB,
     metric_sieve_results  JSONB,                   -- per-threshold pass/fail detail
     qualifying_tiers      VARCHAR(16)[],            -- every tier cleared, best to worst
     is_game_changer       BOOLEAN NOT NULL DEFAULT FALSE,  -- out-of-bracket flag
     game_changer_reason   TEXT,
     makeup_grades         JSONB,                    -- Module 6: Size/AA/Play History/Play Style/Character input
     makeup_grade_down     JSONB,                    -- overall P4 grade shifted per classification level
+    player_identifier     TEXT,                     -- who the film request asked Gemini to isolate
+    player_identified     BOOLEAN,                   -- whether Gemini could confidently locate that player
+    identification_note   TEXT,
+    film_grades           JSONB,                     -- Module 1: per-critical-factor rank
+    film_flags            JSONB,                      -- Module 1: Game-Changer/NGE callouts only
+    film_analysis         JSONB,                      -- Module 1: raw Gemini structured output
     model_used            VARCHAR(64) DEFAULT 'gemini-3.5-flash',
     created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_eval_athlete ON evaluations (athlete_id);
-CREATE INDEX idx_eval_game_changer ON evaluations (is_game_changer) WHERE is_game_changer;
+CREATE INDEX IF NOT EXISTS idx_eval_athlete ON evaluations (athlete_id);
+CREATE INDEX IF NOT EXISTS idx_eval_game_changer ON evaluations (is_game_changer) WHERE is_game_changer;
 
 -- ------------------------------------------------------------
 -- Module 6: Profile & Makeup grade-down reference (not a table —
@@ -163,4 +181,5 @@ VALUES
 ('DL','D1_FCS', 74.0, 77.0, 240, 300, 4.90, 5.20, NULL, NULL, NULL, NULL, NULL, NULL,
  'Interpolated from DE step-down; source page cut off before this tier'),
 ('DL','D2_D3_NAIA_JUCO', 72.0, 76.0, 230, 280, 5.00, 5.30, NULL, NULL, NULL, NULL, NULL, NULL,
- 'Interpolated from DE step-down; source page cut off before this tier');
+ 'Interpolated from DE step-down; source page cut off before this tier')
+ON CONFLICT (position, tier) DO NOTHING;
