@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 
+#include "core/common/uuid.h"
 #include "core/security/user_context.h"
 #include "ui/app/application_context.h"
 #include "ui/auth/sign_in_dialog.h"
@@ -27,8 +28,13 @@ namespace {
 class ScratchRoot {
 public:
     explicit ScratchRoot(const std::string& name) {
+        // A UUID, not rand(). An unseeded rand() returns the same first value in
+        // every process, so two test binaries running at once picked the same
+        // directory and the second one found an administrator already created —
+        // a failure that only appears under `ctest -j` and looks like a defect
+        // in the code under test.
         path_ = std::filesystem::temp_directory_path() /
-                ("trace-signin-" + name + "-" + std::to_string(::rand()));
+                ("trace-signin-" + name + "-" + uuidToCompact(generateUuid()).substr(0, 12));
         std::filesystem::create_directories(path_);
     }
     ~ScratchRoot() {

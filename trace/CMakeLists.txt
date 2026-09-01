@@ -34,6 +34,13 @@ option(TRACE_WITH_ONNXRUNTIME "Build the local ONNX Runtime detection provider" 
 # machine without SQLCipher or OpenSSL still builds a TRACE that works on
 # unencrypted workspaces and refuses encrypted ones with a stated reason.
 option(TRACE_WITH_ENCRYPTION "Encrypt the case database and evidence at rest" ON)
+
+# Attached cameras: USB webcams and capture cards, via libavdevice. On by
+# default and degrading like the encryption backend — libavdevice ships
+# separately on Debian-family systems and some FFmpeg builds omit it, and losing
+# USB cameras must not cost the network camera path, which needs only
+# libavformat.
+option(TRACE_WITH_AVDEVICE "Open cameras attached to this machine (USB, capture cards)" ON)
 set(TRACE_ONNXRUNTIME_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime"
     CACHE PATH "Root of an ONNX Runtime distribution (include/ and lib/)")
 
@@ -61,6 +68,16 @@ endif()
 # FFmpeg via pkg-config where it exists, headers and import libraries where it
 # does not. Both paths produce trace::ffmpeg and the same version strings.
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindFFmpegPortable.cmake)
+
+# libavdevice, for cameras attached to this machine. Optional; when absent TRACE
+# still records network cameras and says why the local ones are missing.
+if(TRACE_WITH_AVDEVICE)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindAvDevice.cmake)
+else()
+    set(TRACE_AVDEVICE_FOUND FALSE)
+    add_library(trace_avdevice INTERFACE)
+    add_library(trace::avdevice ALIAS trace_avdevice)
+endif()
 
 if(TRACE_WITH_OPENCV)
     find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
@@ -105,6 +122,11 @@ message(STATUS "  desktop app ........ ${TRACE_BUILD_DESKTOP}")
 message(STATUS "  tests .............. ${TRACE_BUILD_TESTS}")
 message(STATUS "  SQLite ............. ${TRACE_SQLITE_DESCRIPTION}")
 message(STATUS "  Encryption ......... ${TRACE_ENCRYPTION_FOUND}")
+if(TRACE_AVDEVICE_FOUND)
+    message(STATUS "  Attached cameras ... libavdevice ${TRACE_AVDEVICE_VERSION}")
+else()
+    message(STATUS "  Attached cameras ... unavailable (no libavdevice; network cameras unaffected)")
+endif()
 message(STATUS "  FFmpeg (libav) ..... avformat ${FFMPEG_libavformat_VERSION}, avcodec ${FFMPEG_libavcodec_VERSION} (via ${TRACE_FFMPEG_SOURCE})")
 if(TRACE_BUILD_DESKTOP)
     message(STATUS "  Qt ................. ${Qt6_VERSION}")

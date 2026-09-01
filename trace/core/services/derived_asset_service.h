@@ -55,6 +55,24 @@ public:
 
     Result<DerivedAsset> registerAsset(const DerivedAssetRegistration& registration);
 
+    /// Records an operation that produced no derived asset.
+    ///
+    /// Live capture is the case this exists for: the file it produced is
+    /// *original* evidence, not a derivation of anything, so there is no asset
+    /// row to write — but the operation that made it is exactly the provenance a
+    /// captured recording needs, because for a capture the software, the machine
+    /// clock and the camera are the only account of where the material came
+    /// from. Routed through here rather than through the repository so
+    /// provenance keeps one write path.
+    Result<ProcessingOperation> recordOperation(const std::string& caseId,
+                                                const std::string& evidenceId,
+                                                const std::string& operationType,
+                                                const JsonValue& parameters,
+                                                const JsonValue& libraryVersions,
+                                                const std::string& notes = {},
+                                                const std::string& startedAt = {},
+                                                const std::string& completedAt = {});
+
     Result<std::vector<DerivedAsset>> listForEvidence(const std::string& evidenceId);
     Result<std::vector<DerivedAsset>> listForCase(const std::string& caseId);
     Result<std::vector<ProcessingOperation>> operationsForEvidence(const std::string& evidenceId);

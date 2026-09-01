@@ -68,6 +68,8 @@ Status ApplicationContext::initialise(const std::filesystem::path& dataRoot) {
     derivedAssetService_ = std::make_shared<DerivedAssetService>(database_, *layout_, auditService_);
     frameExportService_ = std::make_unique<FrameExportService>(*layout_, derivedAssetService_);
     waveformService_ = std::make_unique<WaveformService>(*layout_, derivedAssetService_);
+    captureService_ = std::make_unique<CaptureService>(*layout_, *evidenceService_,
+                                                      derivedAssetService_, auditService_);
     analysisService_ = std::make_shared<AnalysisService>(database_, auditService_);
     modelManager_ = std::make_unique<ModelManager>(ModelManager::defaultModelDirectory(dataRoot));
     reportService_ = std::make_unique<ReportService>(
@@ -159,6 +161,7 @@ void ApplicationContext::shutdown() {
 
     frameExportService_.reset();
     waveformService_.reset();
+    captureService_.reset();
     // Drop the key before anything else: from here on nothing more should be
     // decrypted, and holding it after the services that use it have gone is
     // just a key sitting in memory for no reason.
