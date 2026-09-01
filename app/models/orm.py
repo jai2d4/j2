@@ -35,7 +35,9 @@ class Athlete(Base):
     sat: Mapped[int | None]
     act: Mapped[int | None]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),
+    )
 
     evaluations: Mapped[list["Evaluation"]] = relationship(back_populates="athlete", cascade="all, delete-orphan")
 

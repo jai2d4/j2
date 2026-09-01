@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,11 +29,15 @@ async def create_athlete(athlete: AthleteCreate, db: AsyncSession = Depends(get_
 @router.get("", response_model=list[Athlete])
 async def list_athletes(
     position: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    # Bounded at both ends. Postgres rejects a negative LIMIT or OFFSET outright,
+    # so without the lower bound `?limit=-1` reached the database and came back
+    # as an unhandled driver error — a 500 carrying an asyncpg exception rather
+    # than a 422 saying which parameter was wrong.
+    limit: int = Query(50, ge=0, le=200),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(orm.Athlete).order_by(orm.Athlete.created_at.desc()).limit(min(limit, 200)).offset(offset)
+    stmt = select(orm.Athlete).order_by(orm.Athlete.created_at.desc()).limit(limit).offset(offset)
     if position:
         stmt = stmt.where(orm.Athlete.position == position)
     result = await db.execute(stmt)

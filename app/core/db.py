@@ -38,10 +38,35 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 @asynccontextmanager
 async def best_effort_session() -> AsyncIterator[AsyncSession | None]:
     """For call sites that should persist opportunistically (e.g. truth-report)
-    without failing the whole request if the DB happens to be down."""
+    without failing the whole request if the DB happens to be down.
+
+    Only *opening* the session is best-effort. The caller's own block is not:
+    wrapping the yield in `try/except Exception` meant an error raised inside
+    the `async with` body was thrown back in at the yield, caught here, logged
+    as "DB unavailable" — which it was not — and then followed by a second
+    yield, which an async generator cannot do. The caller saw
+    `RuntimeError: generator didn't stop after athrow()` instead of its own
+    exception, with a misleading warning in the log pointing at the database.
+
+    So the session is opened first, and the yield sits outside the guard. A
+    caller's bug propagates as itself; only a genuine connection failure
+    produces the `None` this exists for.
+    """
+    session: AsyncSession | None = None
     try:
-        async with _SessionLocal() as session:
-            yield session
-    except Exception as e:  # noqa: BLE001 — deliberately broad: any DB hiccup is non-fatal here
+        session = _SessionLocal()
+        # Force the connection now. Without this the session is lazy and a dead
+        # database would not surface until the caller's first statement, which
+        # is past the point where this function can still hand back None.
+        await session.connection()
+    except Exception as e:  # noqa: BLE001 — any failure to *reach* the DB is non-fatal here
         logger.warning("Skipping best-effort persistence — DB unavailable: %s", e)
+        if session is not None:
+            await session.close()
         yield None
+        return
+
+    try:
+        yield session
+    finally:
+        await session.close()

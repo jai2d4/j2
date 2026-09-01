@@ -7,9 +7,11 @@ Module 4  → /api/v1/scout/truth-report   (combined film + sieve output)
 Module 5  → db/init_schema.sql, app.core.db, app.routers.{athletes,evaluations}
 Module 6  → /api/v1/scout/makeup-grade   (Profile & Makeup grade-down)
 """
+import asyncio
 import json
 import logging
 import os
+import uuid
 from pathlib import Path
 from uuid import UUID
 
@@ -138,15 +140,31 @@ async def analyze_player_film(
     if not file.filename or not file.filename.lower().endswith(ALLOWED_EXTS):
         raise HTTPException(status_code=400, detail="Invalid video format.")
 
-    video_path = os.path.join(settings.UPLOAD_TMP_DIR, os.path.basename(file.filename))
-    try:
-        data = await file.read()
-        if len(data) > settings.MAX_UPLOAD_MB * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="File exceeds upload limit.")
-        with open(video_path, "wb") as buffer:
-            buffer.write(data)
+    # A name of our own, not the client's. Two concurrent uploads called
+    # "film.mp4" previously mapped to the same path: they overwrote each other,
+    # and whichever finished first deleted the file the other was still sending
+    # to Gemini. The suffix is kept only so the extension survives.
+    suffix = os.path.splitext(file.filename)[1].lower()
+    video_path = os.path.join(settings.UPLOAD_TMP_DIR, f"{uuid.uuid4().hex}{suffix}")
 
-        video_file = ai_client.files.upload(file=video_path)
+    limit_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+    try:
+        # Streamed in chunks and checked as it goes. Reading the whole body
+        # first and measuring afterwards meant an over-limit upload was fully
+        # materialised in memory before being refused — the 413 was correct and
+        # the memory was already spent.
+        written = 0
+        with open(video_path, "wb") as buffer:
+            while chunk := await file.read(1024 * 1024):
+                written += len(chunk)
+                if written > limit_bytes:
+                    raise HTTPException(status_code=413, detail="File exceeds upload limit.")
+                buffer.write(chunk)
+
+        # to_thread because both of these are synchronous SDK calls. Awaiting
+        # them directly on the event loop blocked every other request for the
+        # length of an upload plus an inference.
+        video_file = await asyncio.to_thread(ai_client.files.upload, file=video_path)
         return await _run_film_analysis(video_file, position, player_identifier)
     finally:
         if os.path.exists(video_path):
@@ -157,7 +175,8 @@ async def _run_film_analysis(
     video_content, position: Position, player_identifier: Optional[str] = None,
 ) -> dict:
     try:
-        response = ai_client.models.generate_content(
+        response = await asyncio.to_thread(
+            ai_client.models.generate_content,
             model=settings.GEMINI_MODEL,
             contents=[video_content, build_scouting_prompt(position, player_identifier)],
             config=types.GenerateContentConfig(response_mime_type="application/json"),
@@ -182,8 +201,12 @@ async def _run_film_analysis(
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # Logged in full, reported in general terms. str(e) on an SDK or driver
+        # exception can carry request URLs, model identifiers and occasionally
+        # fragments of the payload, none of which belongs in a client response.
+        logger.exception("Film analysis failed")
+        raise HTTPException(status_code=500, detail="Film analysis failed.")
 
 
 @app.post("/api/v1/scout/truth-report", dependencies=[Depends(require_api_key)])

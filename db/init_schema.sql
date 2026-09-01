@@ -53,6 +53,22 @@ CREATE TABLE IF NOT EXISTS athletes (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- updated_at only had a DEFAULT, which fires on INSERT and never again, so the
+-- column silently stayed equal to created_at for the life of the row. A trigger
+-- rather than application code: anything that writes to this table — the API, a
+-- migration, a DBA at a psql prompt — should leave a truthful timestamp behind.
+CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS athletes_set_updated_at ON athletes;
+CREATE TRIGGER athletes_set_updated_at
+    BEFORE UPDATE ON athletes
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 CREATE INDEX IF NOT EXISTS idx_athletes_position ON athletes (position);
 CREATE INDEX IF NOT EXISTS idx_athletes_grad_year ON athletes (grad_year);
 
