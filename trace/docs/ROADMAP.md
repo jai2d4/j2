@@ -90,6 +90,46 @@ Still open from this area:
   pipeline are both in place; a detector would need its own results table and a
   pipeline in `analysis/`.
 
+## Live camera capture — built
+
+**Recording from a camera**, not just importing files from one. Network cameras over
+Ethernet or WiFi (RTSP/RTMP/SRT/HTTP via avformat), attached cameras through
+libavdevice, and Bluetooth as what it actually is: a control link that tells a camera to
+bring up its WiFi. See `docs/CAMERA_INGEST.md`.
+
+The part that mattered most was not the transport. A live camera has **no original**, so
+TRACE is the recording device and the chain of custody starts with this process on this
+clock. A captured segment therefore carries capture provenance — `"no_original_exists"`,
+the camera, the transport, the machine clock — rather than the ingest record that would
+imply the material came from somewhere. A dropped link ends the segment, records the gap
+with its cause, and starts a new one; nothing is joined into a file that presents
+continuous timestamps across missing time.
+
+Two parts are **written but unproven**, for want of hardware:
+
+- **Attached cameras.** libavdevice is linked and registered, but this machine has no
+  `/dev/video*` device and the path has never opened one.
+- **The RTSP handshake specifically.** No RTSP server was available here. The tests
+  record from a real TCP socket through the same `avformat_open_input` call, which
+  exercises everything downstream of the handshake but not the handshake itself.
+
+**Bluetooth video is not coming.** There is no Bluetooth video profile in general use and
+BLE's throughput is one to two orders of magnitude short of compressed 1080p. The
+platform backends (BlueZ, WinRT, CoreBluetooth) are three separate integrations and none
+is implemented; every entry point refuses with the reason rather than returning an empty
+list that reads as "no cameras nearby".
+
+Still open from this area:
+
+- **A Bluetooth backend**, on at least one platform, so `beginStreaming()` can do the
+  BLE-to-WiFi handoff it is shaped for. Needs an adapter and a camera to test against.
+- **Windows device enumeration.** libavdevice's DirectShow listing writes to the log
+  rather than offering an API; `findLocalDevices()` says so instead of returning an empty
+  list, and cameras are added by name there.
+- **Scheduled and continuous capture** — a camera recorded on a schedule, or
+  continuously with rolling retention, which is a different lifecycle from an operator
+  pressing Record.
+
 ### Phase 4 — then, in rough order
 
 - **Prove hardware decode on real hardware** — the accelerated path is written and has

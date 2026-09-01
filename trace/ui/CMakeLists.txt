@@ -37,6 +37,7 @@ add_library(trace_ui STATIC
     annotations/bookmarks_panel.cpp
     annotations/annotations_panel.cpp
     audit_viewer/audit_panel.cpp
+    capture/capture_dialog.cpp
 )
 
 add_library(trace::ui ALIAS trace_ui)

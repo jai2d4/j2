@@ -126,6 +126,7 @@ private:
     QLabel* positionStatusLabel_ = nullptr;
 
     QAction* importAction_ = nullptr;
+    QAction* captureAction_ = nullptr;
     QAction* verifyAction_ = nullptr;
     QAction* saveFrameAction_ = nullptr;
     QAction* bookmarkAction_ = nullptr;

@@ -7,7 +7,7 @@
 find_package(GTest REQUIRED)
 include(GoogleTest)
 
-add_library(trace_test_support STATIC support/test_environment.cpp)
+add_library(trace_test_support STATIC support/test_environment.cpp support/stream_server.cpp)
 target_include_directories(trace_test_support PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(trace_test_support PUBLIC trace_core trace_media trace_ai trace_analysis trace_reporting)
 target_compile_definitions(trace_test_support PUBLIC
@@ -46,6 +46,7 @@ add_executable(trace_integration_tests
     integration/detection_pipeline_test.cpp
     integration/bulk_review_test.cpp
     integration/hardware_decode_test.cpp
+    integration/camera_capture_test.cpp
     integration/report_export_test.cpp
 )
 target_link_libraries(trace_integration_tests PRIVATE

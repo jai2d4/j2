@@ -54,6 +54,11 @@ analyst's.
 | Waveform envelope on the timeline, generated as a derived asset with provenance | Working |
 | Volume and mute, persisted; neither alters evidence | Working |
 | **Hardware-accelerated decode** | **Written, unproven** — device enumeration and the software fallback are tested; the accelerated path has never run on a GPU. Off by default, and exported exhibits always decode in software. See `docs/HARDWARE_DECODE.md` |
+| **Recording from a live camera** — network cameras over Ethernet or WiFi | Working | RTSP/RTMP/SRT/HTTP via avformat. Remuxed, never re-encoded; segments hashed when they close; ONVIF WS-Discovery finds candidates and manual entry is a first-class path |
+| A dropped link becomes a recorded gap, never a silent join | Working | Separate segments, each its own exhibit, each carrying the gap that preceded it |
+| Captured evidence carries capture provenance, not ingest provenance | Working | `"no_original_exists": true`, the camera, the transport, the machine clock — because TRACE *is* the recording device and there is nothing earlier to check the hash against |
+| **Attached cameras** — USB webcams, capture cards | **Written, unproven** — libavdevice is linked and registered; this machine has no `/dev/video*` device, so the path has never opened one. See `docs/CAMERA_INGEST.md` §0 |
+| **Bluetooth video** | **Impossible, and said so** — BLE cannot carry video; TRACE models Bluetooth as a control link that tells a camera to bring up its WiFi. The platform backends are **not implemented** and every entry point refuses with the reason |
 | **GPU inference (CUDA)** | **Written and guarded, never executed here** — this environment has no GPU; see `docs/PHASE1_TESTING.md` |
 | **Face recognition, identity, plates, tracking, re-identification** | **Not implemented, by design** — see `docs/ROADMAP.md` |
 
@@ -164,6 +169,8 @@ including the exact triplet and the DLL deployment step.
 | `TRACE_WITH_ONNXRUNTIME` | `OFF` | Build the ONNX Runtime detection provider |
 | `TRACE_ONNXRUNTIME_ROOT` | — | Where the runtime package was unpacked |
 | `TRACE_WITH_OPENCV` | `OFF` | Link optional OpenCV helpers |
+| `TRACE_WITH_ENCRYPTION` | `ON` | Encrypt the case database and evidence; degrades when SQLCipher/OpenSSL are absent |
+| `TRACE_WITH_AVDEVICE` | `ON` | Open cameras attached to this machine (USB, capture cards). Network cameras are unaffected when it is off |
 
 ---
 
@@ -222,9 +229,9 @@ every run and require it to be identical.
 ctest --test-dir trace/build --output-on-failure
 ```
 
-124 test cases in five suites:
+307 test cases in six suites:
 
-- **`trace_unit_tests`** (81) — SHA-256 against published NIST vectors, identifier and
+- **`trace_unit_tests`** (121) — SHA-256 against published NIST vectors, identifier and
   timecode handling, JSON escaping, managed storage paths, migrations and drift
   detection, the append-only audit guarantee, repository round-trips, service
   validation, and the Phase 1 detection maths: the letterbox transform and its inverse,
@@ -233,10 +240,11 @@ ctest --test-dir trace/build --output-on-failure
 - **`trace_ui_unit_tests`** (6) — overlay geometry under letterboxing, hit-testing,
   colour semantics, and a byte-level check that drawing boxes leaves the decoded frame
   untouched.
-- **`trace_integration_tests`** (35) — ingestion against the real sample file,
+- **`trace_integration_tests`** (163) — ingestion against the real sample file,
   persistence across a restart, integrity failure detection, decoding, accurate seeking,
-  frame stepping, playback, frame export, and the whole detection pipeline including
-  real inference against real footage.
+  frame stepping, playback, frame export, the whole detection pipeline including real
+  inference against real footage, encryption both ways, and live capture from a real
+  network socket — including a link that drops mid-recording and the gap that produces.
 - **`trace_acceptance_test`** (1) — the Phase 0 §37 workflow driven through the real
   application. Set `TRACE_SCREENSHOT_DIR` to capture screenshots of each stage.
 - **`trace_acceptance_phase1_test`** (1) — the Phase 1 workflows through the real window:
@@ -276,6 +284,7 @@ as importantly, what was not.
 | [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) | How passwords are stored, why not SHA-256, and what local accounts do *not* protect |
 | [docs/ENCRYPTION.md](docs/ENCRYPTION.md) | What is encrypted, the key hierarchy, and §6: what encryption at rest does *not* protect |
 | [docs/HARDWARE_DECODE.md](docs/HARDWARE_DECODE.md) | Why GPU decode is off by default, where it is deliberately not used, and how to check it on your own hardware |
+| [docs/CAMERA_INGEST.md](docs/CAMERA_INGEST.md) | Cable, WiFi and Bluetooth — what each actually is, why capturing is not ingesting, and what has not been run |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What Phase 2+ adds and the extension points waiting for it |
 
 ---

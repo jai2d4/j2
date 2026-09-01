@@ -26,6 +26,7 @@
 #include "core/settings/settings_service.h"
 #include "core/storage/storage_layout.h"
 #include "media/audio/waveform_service.h"
+#include "media/capture/capture_service.h"
 #include "media/thumbnails/frame_export_service.h"
 
 namespace trace::ui {
@@ -58,6 +59,7 @@ public:
     DerivedAssetService& derivedAssets() const { return *derivedAssetService_; }
     FrameExportService& frameExports() const { return *frameExportService_; }
     WaveformService& waveforms() const { return *waveformService_; }
+    CaptureService& capture() const { return *captureService_; }
     WorkspaceKeys& keys() const { return *keys_; }
 
     /// The accelerator to decode with, or empty for software.
@@ -146,6 +148,7 @@ private:
     std::shared_ptr<DerivedAssetService> derivedAssetService_;
     std::unique_ptr<FrameExportService> frameExportService_;
     std::unique_ptr<WaveformService> waveformService_;
+    std::unique_ptr<CaptureService> captureService_;
     std::unique_ptr<AuthService> authService_;
     /// Declared early and destroyed late: services hold a pointer to it.
     std::shared_ptr<WorkspaceKeys> keys_ = std::make_shared<WorkspaceKeys>();

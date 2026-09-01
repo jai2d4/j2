@@ -47,6 +47,16 @@ public:
     std::filesystem::path reportsDirectory(const std::string& caseId) const;
     std::filesystem::path caseLogsDirectory(const std::string& caseId) const;
 
+    /// Where a live capture writes while it is still recording.
+    ///
+    /// Deliberately not `originals/`: nothing belongs there until it has been
+    /// hashed and filed, and a segment that is still being written has no
+    /// digest. It is deliberately not created by `ensureCaseDirectories` either
+    /// — a case that has never recorded from a camera should not have an empty
+    /// capture folder implying it did. CaptureService creates it on demand and
+    /// removes each staged file once the verified managed copy exists.
+    std::filesystem::path captureStagingDirectory(const std::string& caseId) const;
+
     /// Creates the data root and its top-level directories.
     Status ensureDataRoot() const;
     /// Creates the full directory set for one case.

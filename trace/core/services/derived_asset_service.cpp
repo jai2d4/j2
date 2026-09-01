@@ -128,6 +128,38 @@ Result<DerivedAsset> DerivedAssetService::registerAsset(
     return ResultType::success(std::move(asset));
 }
 
+Result<ProcessingOperation> DerivedAssetService::recordOperation(
+    const std::string& caseId, const std::string& evidenceId, const std::string& operationType,
+    const JsonValue& parameters, const JsonValue& libraryVersions, const std::string& notes,
+    const std::string& startedAt, const std::string& completedAt) {
+    using ResultType = Result<ProcessingOperation>;
+
+    const std::string now = nowIso8601Utc();
+
+    ProcessingOperation operation;
+    operation.id = generateUuid();
+    operation.caseId = caseId;
+    operation.evidenceId = evidenceId;
+    operation.operationType = operationType;
+    operation.parametersJson = parameters.dump();
+    operation.softwareName = kApplicationName;
+    operation.softwareVersion = kApplicationVersion;
+    operation.libraryVersionsJson = libraryVersions.dump();
+    // The caller's own times where it has them. A capture's operation ran for as
+    // long as the recording did, and collapsing that to the instant the row was
+    // written would lose the one span an examiner is most likely to ask about.
+    operation.startedAt = startedAt.empty() ? now : startedAt;
+    operation.completedAt = completedAt.empty() ? now : completedAt;
+    operation.status = "completed";
+    operation.performedBy = UserContext::current().actorName();
+    operation.notes = notes;
+
+    if (auto status = repository_->insertOperation(operation); !status) {
+        return ResultType(status.error());
+    }
+    return ResultType::success(std::move(operation));
+}
+
 Result<std::vector<DerivedAsset>> DerivedAssetService::listForEvidence(
     const std::string& evidenceId) {
     return repository_->listAssetsForEvidence(evidenceId);

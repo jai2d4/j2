@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <string>
 
+#include "core/common/uuid.h"
 #include "core/security/crypto.h"
 #include "core/security/keyring.h"
 #include "core/security/workspace_keys.h"
@@ -35,8 +36,13 @@ constexpr const char* kPassword = "correct horse battery staple";
 class ScratchRoot {
 public:
     explicit ScratchRoot(const std::string& name) {
+        // A UUID, not rand(). An unseeded rand() returns the same first value in
+        // every process, so two test binaries running at once picked the same
+        // directory and the second one found an administrator already created —
+        // a failure that only appears under `ctest -j` and looks like a defect
+        // in the code under test.
         path_ = std::filesystem::temp_directory_path() /
-                ("trace-unlock-" + name + "-" + std::to_string(::rand()));
+                ("trace-unlock-" + name + "-" + uuidToCompact(generateUuid()).substr(0, 12));
         std::filesystem::create_directories(path_);
     }
     ~ScratchRoot() {

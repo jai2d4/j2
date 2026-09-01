@@ -394,6 +394,11 @@ const char* toString(AuditAction action) {
         case AuditAction::AccountDeactivated:      return "auth.account_deactivated";
         case AuditAction::PasswordChanged:         return "auth.password_changed";
         case AuditAction::PasswordReset:           return "auth.password_reset";
+        case AuditAction::CaptureStarted:          return "capture.started";
+        case AuditAction::CaptureCompleted:        return "capture.completed";
+        case AuditAction::CaptureFailed:           return "capture.failed";
+        case AuditAction::CaptureInterrupted:      return "capture.interrupted";
+        case AuditAction::CameraDiscovered:        return "capture.camera_discovered";
         case AuditAction::Unknown:                   return "unknown";
     }
     return "unknown";
@@ -453,6 +458,11 @@ const char* toDisplayString(AuditAction action) {
         case AuditAction::AccountDeactivated:      return "Account deactivated";
         case AuditAction::PasswordChanged:         return "Password changed";
         case AuditAction::PasswordReset:           return "Password reset";
+        case AuditAction::CaptureStarted:          return "Live capture started";
+        case AuditAction::CaptureCompleted:        return "Live capture completed";
+        case AuditAction::CaptureFailed:           return "Live capture failed";
+        case AuditAction::CaptureInterrupted:      return "Live capture interrupted";
+        case AuditAction::CameraDiscovered:        return "Camera discovered";
         case AuditAction::Unknown:                   return "Unknown action";
     }
     return "Unknown action";
@@ -512,6 +522,11 @@ AuditAction auditActionFromString(const std::string& text) {
         {"auth.account_deactivated", AuditAction::AccountDeactivated},
         {"auth.password_changed", AuditAction::PasswordChanged},
         {"auth.password_reset", AuditAction::PasswordReset},
+        {"capture.started", AuditAction::CaptureStarted},
+        {"capture.completed", AuditAction::CaptureCompleted},
+        {"capture.failed", AuditAction::CaptureFailed},
+        {"capture.interrupted", AuditAction::CaptureInterrupted},
+        {"capture.camera_discovered", AuditAction::CameraDiscovered},
     };
     for (const auto& entry : kMap) {
         if (text == entry.text) return entry.action;

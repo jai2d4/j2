@@ -78,6 +78,9 @@ std::filesystem::path StorageLayout::reportsDirectory(const std::string& caseId)
 std::filesystem::path StorageLayout::caseLogsDirectory(const std::string& caseId) const {
     return caseDirectory(caseId) / "logs";
 }
+std::filesystem::path StorageLayout::captureStagingDirectory(const std::string& caseId) const {
+    return caseDirectory(caseId) / "capture";
+}
 
 Status StorageLayout::ensureDataRoot() const {
     if (auto status = createDirectory(dataRoot_); !status) return status;

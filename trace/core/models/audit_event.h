@@ -66,6 +66,16 @@ enum class AuditAction {
     AccountDeactivated,
     PasswordChanged,
     PasswordReset,
+    // Live capture. Deliberately separate from the Evidence* actions above:
+    // those record a file arriving from outside, where the chain of custody
+    // began before TRACE. A capture has no such origin — TRACE is the recording
+    // device — and the trail must not read as though a pre-existing file was
+    // imported.
+    CaptureStarted,
+    CaptureCompleted,
+    CaptureFailed,
+    CaptureInterrupted,   ///< the link dropped mid-recording; a gap was recorded
+    CameraDiscovered,
     Unknown,
 };
 

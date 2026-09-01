@@ -25,6 +25,7 @@
 #include "ui/annotations/bookmarks_panel.h"
 #include "ui/app/application_context.h"
 #include "ui/audit_viewer/audit_panel.h"
+#include "ui/capture/capture_dialog.h"
 #include "ui/case_browser/case_browser_panel.h"
 #include "ui/case_browser/case_dialog.h"
 #include "ui/common/background_task.h"
@@ -162,6 +163,23 @@ void MainWindow::buildMenus() {
     connect(importAction_, &QAction::triggered, this,
             [this] { evidencePanel_->importEvidence(); });
 
+    // Deliberately its own action rather than a mode of Import: recording from a
+    // camera produces evidence with a different origin story, and offering it as
+    // a variety of import is the first step towards recording it as one.
+    captureAction_ = fileMenu->addAction(QStringLiteral("&Record from a camera…"));
+    captureAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+R")));
+    connect(captureAction_, &QAction::triggered, this, [this] {
+        CaptureDialog dialog(context_, this);
+        dialog.exec();
+        if (!dialog.captured().empty()) {
+            context_->notifyEvidenceChanged();
+            emit context_->statusMessage(
+                QStringLiteral("%1 recording(s) filed from the camera.")
+                    .arg(dialog.captured().size()),
+                6000);
+        }
+    });
+
     editCaseAction_ = fileMenu->addAction(QStringLiteral("Edit case &details…"));
     connect(editCaseAction_, &QAction::triggered, this, [this] {
         if (!context_->currentCase()) return;
@@ -290,6 +308,7 @@ void MainWindow::buildToolBar() {
     toolBar->addAction(auditAction_);
     toolBar->addSeparator();
     toolBar->addAction(importAction_);
+    toolBar->addAction(captureAction_);
     toolBar->addAction(verifyAction_);
     toolBar->addAction(saveFrameAction_);
     toolBar->addSeparator();
@@ -845,6 +864,7 @@ void MainWindow::updateWindowState() {
     const bool hasEvidence = context_->currentEvidence().has_value();
 
     importAction_->setEnabled(hasCase);
+    captureAction_->setEnabled(hasCase);
     editCaseAction_->setEnabled(hasCase);
     verifyAction_->setEnabled(hasEvidence);
     saveFrameAction_->setEnabled(hasEvidence);

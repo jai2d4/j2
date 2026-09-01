@@ -20,7 +20,7 @@ env:
   # The suite must not quietly shrink. Tests skip themselves when a fixture or a
   # model is missing, so a run that lost its assets would still report success
   # with far fewer cases. The floor below is checked after every run.
-  TRACE_MINIMUM_TESTS: "274"
+  TRACE_MINIMUM_TESTS: "307"
 
 jobs:
   linux:
@@ -36,7 +36,7 @@ jobs:
             cmake ninja-build g++ pkg-config \
             qt6-base-dev qt6-multimedia-dev \
             libavformat-dev libavcodec-dev libavutil-dev \
-            libswscale-dev libswresample-dev \
+            libswscale-dev libswresample-dev libavdevice-dev \
             libsqlite3-dev libgtest-dev \
             libsqlcipher-dev libssl-dev
 
