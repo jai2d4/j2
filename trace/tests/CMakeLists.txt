@@ -7,7 +7,7 @@
 find_package(GTest REQUIRED)
 include(GoogleTest)
 
-add_library(trace_test_support STATIC support/test_environment.cpp support/stream_server.cpp)
+add_library(trace_test_support STATIC support/test_environment.cpp support/stream_server.cpp support/rtsp_server.cpp)
 target_include_directories(trace_test_support PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(trace_test_support PUBLIC trace_core trace_media trace_ai trace_analysis trace_reporting)
 target_compile_definitions(trace_test_support PUBLIC

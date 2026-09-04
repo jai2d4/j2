@@ -109,9 +109,16 @@ Two parts are **written but unproven**, for want of hardware:
 
 - **Attached cameras.** libavdevice is linked and registered, but this machine has no
   `/dev/video*` device and the path has never opened one.
-- **The RTSP handshake specifically.** No RTSP server was available here. The tests
-  record from a real TCP socket through the same `avformat_open_input` call, which
-  exercises everything downstream of the handshake but not the handshake itself.
+- ~~**The RTSP handshake specifically.**~~ — covered. The tests bring their own RTSP
+  server: SDP from `av_sdp_create`, RTP from FFmpeg's own muxer, interleaved per RFC
+  2326 §10.12, and assertions that TRACE negotiates DESCRIBE, SETUP and PLAY rather
+  than merely producing a file. What remains uncovered is RTP-to-wall-clock timestamp
+  establishment, because that server sends no RTCP sender reports.
+
+  Building it found real behaviour worth fixing: a single packet with no timestamp —
+  which is what an RTSP depacketiser delivers first — ended the entire capture and left
+  an empty container. TRACE now places such a packet on the recording's own timeline and
+  counts the substitution into the provenance record.
 
 **Bluetooth video is not coming.** There is no Bluetooth video profile in general use and
 BLE's throughput is one to two orders of magnitude short of compressed 1080p. The

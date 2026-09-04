@@ -18,7 +18,8 @@ shapes what the tests can honestly claim.
 | Operator stop, progress cancellation, refusals | **Executed.** |
 | Rolling to a new file at a size limit without dropping the camera | **Executed.** |
 | Filing a capture as evidence with capture provenance | **Executed.** |
-| RTSP handshake specifically | **Not executed.** No RTSP server was available here. The transport reaches TRACE through the same `avformat_open_input` call as the HTTP stream that is tested, but the RTSP-specific negotiation is not covered. |
+| RTSP handshake — OPTIONS, DESCRIBE, SETUP, PLAY, RTP interleaved over TCP | **Executed.** The tests bring their own RTSP server (`tests/support/rtsp_server`) and assert TRACE negotiates each step, not merely that a file appeared. |
+| RTP-to-wall-clock timestamp establishment | **Not executed.** That server sends no RTCP sender reports — FFmpeg's RTP muxer cannot emit them through a single custom AVIO — so the mapping a real camera establishes via RTCP is not covered. |
 | USB cameras and capture cards (`video4linux2` / DirectShow / AVFoundation) | **Not executed.** No device. libavdevice is linked and registered; the code path has never opened one. |
 | Bluetooth control | **Not implemented.** No adapter, and no backend written against one. Every entry point refuses with a reason. |
 
@@ -232,6 +233,26 @@ a camera that has worked at least once is worth waiting for.
 corrupt frame that nothing downstream can distinguish from camera noise; TCP
 turns the same event into a stall or a clean disconnect, which TRACE can record
 honestly as a gap.
+
+**A packet with no timestamp does not end the recording.** An RTSP depacketiser
+routinely delivers its first packet — the one carrying the parameter sets and
+the first keyframe — before any RTP timestamp has been established, and the
+muxer refuses such a packet with `EINVAL`. Because a write failure ends a
+capture, that single packet used to kill the whole recording and leave a
+container with nothing in it.
+
+Discarding it would be worse: without that first IDR nothing decodes until the
+next keyframe, which on a camera with a long GOP is seconds of unplayable
+recording. So TRACE falls back to the packet's DTS, and failing that places it at
+the start of the segment where it belongs — then **counts the substitution**.
+`CaptureSegment::timestampsSynthesised` reaches the provenance record as
+`timestamps_synthesised`, so a timeline never silently implies the camera
+supplied timing it did not.
+
+How often real cameras send such packets is **not established here**: the test
+server produces them because it sends no RTCP, and a camera that sends RTCP
+sender reports may never do so. The behaviour is right either way — a capture
+ending on one packet is wrong regardless of how rare that packet is.
 
 **Stop is observed during blocking calls.** `requestStop()` sets a flag that
 FFmpeg polls through an interrupt callback from inside `avformat_open_input` and
