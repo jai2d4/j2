@@ -1,0 +1,117 @@
+#pragma once
+
+#include <QMainWindow>
+
+#include <memory>
+
+#include "core/models/evidence.h"
+
+class QAction;
+class QLabel;
+class QSplitter;
+class QStackedWidget;
+class QTabWidget;
+
+namespace trace::ui {
+
+class AnnotationsPanel;
+class ApplicationContext;
+class AuditPanel;
+class BackgroundTask;
+class BookmarksPanel;
+class CaseBrowserPanel;
+class EvidencePanel;
+class InspectorPanel;
+class TimelineWidget;
+class ViewerPanel;
+
+/// The TRACE main window.
+///
+///   ┌─────────────────────────────────────────────────────────┐
+///   │ TRACE                                                   │
+///   ├──────────────┬──────────────────────────────┬───────────┤
+///   │ EVIDENCE     │                              │ INSPECTOR │
+///   │ BOOKMARKS    │        VIDEO VIEWER          │ metadata  │
+///   │ NOTES        │                              │ hash      │
+///   ├──────────────┴──────────────────────────────┴───────────┤
+///   │                     TIMELINE                            │
+///   └─────────────────────────────────────────────────────────┘
+///
+/// The window owns no domain logic: it routes user intent to services through
+/// ApplicationContext and keeps the panels in step with each other.
+class MainWindow : public QMainWindow {
+    Q_OBJECT
+
+public:
+    explicit MainWindow(ApplicationContext* context, QWidget* parent = nullptr);
+    ~MainWindow() override;
+
+    /// Navigation targets, also used by the automated acceptance test.
+    void showCases();
+    void showViewer();
+    void showAudit();
+
+    // Accessors used by the acceptance test to drive the real UI.
+    CaseBrowserPanel* caseBrowser() const { return caseBrowser_; }
+    EvidencePanel* evidencePanel() const { return evidencePanel_; }
+    ViewerPanel* viewerPanel() const { return viewer_; }
+    InspectorPanel* inspectorPanel() const { return inspector_; }
+    BookmarksPanel* bookmarksPanel() const { return bookmarks_; }
+    AnnotationsPanel* annotationsPanel() const { return annotations_; }
+    TimelineWidget* timeline() const { return timeline_; }
+    AuditPanel* auditPanel() const { return audit_; }
+
+    void openEvidenceInViewer(const Evidence& evidence);
+    void addBookmarkAtPlayhead();
+    void addAnnotationAtPlayhead();
+    void saveCurrentFrame();
+
+protected:
+    void closeEvent(QCloseEvent* event) override;
+
+private:
+    void buildMenus();
+    void buildToolBar();
+    void buildStatusBar();
+    void buildCentralWidgets();
+    void connectSignals();
+    void refreshTimelineTracks();
+    void updateWindowState();
+    void updateStatusForEvidence();
+    void showAbout();
+
+    ApplicationContext* context_ = nullptr;
+
+    QStackedWidget* stack_ = nullptr;
+    CaseBrowserPanel* caseBrowser_ = nullptr;
+    QWidget* analysisPage_ = nullptr;
+    QTabWidget* leftTabs_ = nullptr;
+    EvidencePanel* evidencePanel_ = nullptr;
+    BookmarksPanel* bookmarks_ = nullptr;
+    AnnotationsPanel* annotations_ = nullptr;
+    ViewerPanel* viewer_ = nullptr;
+    InspectorPanel* inspector_ = nullptr;
+    TimelineWidget* timeline_ = nullptr;
+    AuditPanel* audit_ = nullptr;
+
+    QLabel* caseStatusLabel_ = nullptr;
+    QLabel* evidenceStatusLabel_ = nullptr;
+    QLabel* integrityStatusLabel_ = nullptr;
+    QLabel* positionStatusLabel_ = nullptr;
+
+    QAction* importAction_ = nullptr;
+    QAction* verifyAction_ = nullptr;
+    QAction* saveFrameAction_ = nullptr;
+    QAction* bookmarkAction_ = nullptr;
+    QAction* annotationAction_ = nullptr;
+    QAction* editCaseAction_ = nullptr;
+    QAction* casesAction_ = nullptr;
+    QAction* viewerAction_ = nullptr;
+    QAction* auditAction_ = nullptr;
+
+    std::unique_ptr<BackgroundTask> frameExportTask_;
+    std::unique_ptr<BackgroundTask> thumbnailTask_;
+    qint64 lastFrameNumber_ = -1;
+};
+
+}  // namespace trace::ui
