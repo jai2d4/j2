@@ -43,13 +43,24 @@ struct RemuxContexts {
     AVFormatContext* input = nullptr;
     AVFormatContext* output = nullptr;
 
-    ~RemuxContexts() {
-        if (output != nullptr) {
-            if (output->pb != nullptr && (output->oformat->flags & AVFMT_NOFILE) == 0) {
-                avio_closep(&output->pb);
-            }
-            avformat_free_context(output);
+    /// Releases the written file before the destructor would.
+    ///
+    /// Needed because Windows will not let a file be renamed or replaced while
+    /// a handle to it is open, where Linux will. Registering a derived asset
+    /// rewrites the file in place when the workspace is encrypted, so leaving
+    /// the output open until this struct goes out of scope worked on Linux and
+    /// failed on Windows with a sharing violation.
+    void closeOutput() {
+        if (output == nullptr) return;
+        if (output->pb != nullptr && (output->oformat->flags & AVFMT_NOFILE) == 0) {
+            avio_closep(&output->pb);
         }
+        avformat_free_context(output);
+        output = nullptr;
+    }
+
+    ~RemuxContexts() {
+        closeOutput();
         if (input != nullptr) avformat_close_input(&input);
     }
 };
@@ -271,6 +282,11 @@ Result<ClipExportOutcome> ClipExportService::exportClip(const ClipExportRequest&
         return ResultType::failure(ErrorCode::MediaError,
                                    "No frames fell inside the requested range");
     }
+
+    // The clip is complete on disk. Release the handle before anything else
+    // touches the file: registering it rewrites it in place in an encrypted
+    // workspace, and Windows refuses to replace a file that is still open.
+    contexts.closeOutput();
 
     // ------------------------------------------------- register the asset
     DerivedAssetRegistration registration;
