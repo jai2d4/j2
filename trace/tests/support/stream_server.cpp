@@ -6,6 +6,9 @@
 #include <vector>
 
 #if defined(_WIN32)
+// Before any Windows header: windows.h defines min and max as macros, which
+// turns std::min({a, b, c}) into a syntax error rather than anything readable.
+#define NOMINMAX
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else

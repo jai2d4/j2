@@ -13,6 +13,8 @@ extern "C" {
 }
 
 #if defined(_WIN32)
+// See stream_server.cpp: windows.h's min/max macros break standard algorithms.
+#define NOMINMAX
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
@@ -69,11 +71,23 @@ struct Interleaver {
     bool broken = false;
 };
 
+/// FFmpeg 7.0 (libavformat 61) made the write callback's buffer const.
+///
+/// Both spellings are correct against their own version and neither compiles
+/// against the other — CI builds Linux against 60.16 and Windows against n9.0,
+/// so this is selected from the header rather than picked to suit whichever
+/// machine happened to compile it last.
+#if LIBAVFORMAT_VERSION_MAJOR >= 61
+using AvioWriteBuffer = const std::uint8_t*;
+#else
+using AvioWriteBuffer = std::uint8_t*;
+#endif
+
 /// RFC 2326 §10.12 framing: '$', channel, 16-bit big-endian length, payload.
 ///
 /// This is the callback the RTP muxer writes into, so what lands on the wire is
 /// FFmpeg's own packetisation rather than anything reassembled here.
-int writeInterleaved(void* opaque, std::uint8_t* buffer, int size) {
+int writeInterleaved(void* opaque, AvioWriteBuffer buffer, int size) {
     auto* state = static_cast<Interleaver*>(opaque);
     if (state->broken || size <= 0) return size;
     if (state->dropAfter > 0 && state->packetsSent >= state->dropAfter) {
