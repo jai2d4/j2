@@ -254,9 +254,14 @@ jobs:
         run: |
           $output = ctest -R 'Encrypted|Keyring|Crypto' --output-on-failure 2>&1 | Out-String
           Write-Host $output
-          if ($output -match '(\d+) tests passed, (\d+) tests failed out of (\d+)') {
-            $passed = [int]$Matches[1]
+          # ctest writes "100% tests passed, 0 tests failed out of 56" -- the
+          # first number is a percentage, so a pattern expecting digits directly
+          # before " tests passed" never matches and this step failed on a
+          # perfectly good result.
+          if ($output -match '(\d+)% tests passed, (\d+) tests failed out of (\d+)') {
+            $failed = [int]$Matches[2]
             $total  = [int]$Matches[3]
+            $passed = $total - $failed
           } else {
             throw "Could not read a test summary from ctest."
           }
