@@ -154,11 +154,20 @@ Still open from this area:
   containers for the evidence, and a keyring that lets several operators hold the same
   workspace key without sharing a password. See `docs/ENCRYPTION.md`, whose §6 lists
   what it does not protect.
-- **Encrypt derived assets** — the largest remaining gap in that §6. Thumbnails,
-  waveforms and exported frames are still written in the clear, and a thumbnail is a
-  frame of the recording. `DerivedAssetService::registerAsset` is the one place every
-  derived artefact passes through, so this is a change at a single choke point rather
-  than a sweep.
+- ~~**Encrypt derived assets**~~ — built. Thumbnails, waveforms, exported frames and
+  clips go into the same containers under the same case key, through the one choke point
+  every derived artefact already passed through. The recorded digest and size describe
+  the plaintext, as they do for evidence; a locked workspace refuses to produce a derived
+  asset rather than writing one in the clear; and exhibit bundles are decrypted on the
+  way out, because a bundle exists to be checked with `sha256sum` by somebody who has
+  neither TRACE nor the key. `docs/ENCRYPTION.md` §6.1 now says what is true instead of
+  what was missing.
+
+  Fixing it surfaced a second bug worth naming: **clip export had never learned to read
+  encrypted evidence**. It opened the managed original by plain path, so in an encrypted
+  workspace it met a container and reported "Invalid data found when processing input" —
+  the opaque codec-shaped error that `EncryptedMediaIo` exists to prevent. It now goes
+  through the decrypting IO layer like every other reader.
 - **Windows encrypted builds** — SQLCipher and libcrypto are both in vcpkg and nothing
   in the code is platform-specific beyond the random source, but CI does not yet build
   Windows with `TRACE_WITH_ENCRYPTION=ON`, so that path is written and unproven.

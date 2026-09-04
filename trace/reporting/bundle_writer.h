@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "core/common/result.h"
+#include "core/security/crypto.h"
 
 namespace trace {
 
@@ -55,7 +56,17 @@ public:
     Status createLayout();
 
     /// Copies a produced artefact (frame, clip) into `exhibits/` under `name`.
-    Result<ManifestEntry> addExhibit(const std::filesystem::path& source, const std::string& name);
+    /// Copies a file from managed storage into the bundle's exhibits directory.
+    ///
+    /// `key` decrypts a source that is an encrypted container. **The bundle
+    /// always holds plaintext**, and that is not an oversight: a bundle exists
+    /// to be handed to somebody who does not have TRACE and checked with
+    /// `sha256sum`, so an encrypted exhibit would defeat the entire point of
+    /// producing one. Protecting a bundle is a question of how it is
+    /// transported, which is outside this software — `docs/ENCRYPTION.md` §6
+    /// says so rather than letting anyone assume otherwise.
+    Result<ManifestEntry> addExhibit(const std::filesystem::path& source, const std::string& name,
+                                     const crypto::SecretKey* key = nullptr);
     /// Writes a text document at `relativePath`, creating parents as needed.
     Result<ManifestEntry> addTextFile(const std::string& relativePath, const std::string& contents);
     /// Records a file a caller wrote into the bundle itself — used where producing the

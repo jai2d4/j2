@@ -65,7 +65,8 @@ Status ApplicationContext::initialise(const std::filesystem::path& dataRoot) {
     integrityService_ =
         std::make_unique<IntegrityService>(database_, *layout_, auditService_, keys_);
     annotationService_ = std::make_unique<AnnotationService>(database_, auditService_);
-    derivedAssetService_ = std::make_shared<DerivedAssetService>(database_, *layout_, auditService_);
+    derivedAssetService_ =
+        std::make_shared<DerivedAssetService>(database_, *layout_, auditService_, keys_);
     frameExportService_ = std::make_unique<FrameExportService>(*layout_, derivedAssetService_);
     waveformService_ = std::make_unique<WaveformService>(*layout_, derivedAssetService_);
     captureService_ = std::make_unique<CaptureService>(*layout_, *evidenceService_,

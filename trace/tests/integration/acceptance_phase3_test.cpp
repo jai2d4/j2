@@ -179,6 +179,12 @@ TEST(AcceptancePhase3, TheWaveformIsBuiltAsADerivedAssetAndReachesTheTimeline) {
         << "which decoder produced these samples is part of the provenance";
 
     // The file on disk is the file that was hashed.
+    //
+    // True here because this workspace is unencrypted, and *only* because of
+    // that: a derived asset's recorded digest always describes the plaintext, so
+    // in an encrypted workspace the bytes on disk are a container and hash to
+    // something else entirely. See ENCRYPTION.md §6.1 — this is not an invariant
+    // to "restore" by hashing the container.
     const auto stored = workspace->context->layout().resolve(waveformAsset.storageRelPath);
     ASSERT_TRUE(std::filesystem::exists(stored));
     auto digest = hashFile(stored);

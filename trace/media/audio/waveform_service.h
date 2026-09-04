@@ -34,7 +34,13 @@ public:
                                         const crypto::SecretKey* key = nullptr);
 
     /// Reads a registered waveform back off disk.
-    Result<Waveform> load(const DerivedAsset& asset) const;
+    ///
+    /// `key` is needed only when the stored envelope is an encrypted container.
+    /// Whether it is one is decided by looking at the file, not by whether a key
+    /// was passed: a workspace holds both, because everything written before
+    /// encryption was switched on is still a plain file.
+    Result<Waveform> load(const DerivedAsset& asset,
+                          const crypto::SecretKey* key = nullptr) const;
 
 private:
     StorageLayout layout_;

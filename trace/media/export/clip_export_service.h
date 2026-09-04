@@ -8,6 +8,7 @@
 
 #include "core/common/result.h"
 #include "core/common/time_utils.h"
+#include "core/security/crypto.h"
 #include "core/models/derived_asset.h"
 #include "core/models/evidence.h"
 #include "core/services/derived_asset_service.h"
@@ -22,6 +23,10 @@ struct ClipExportRequest {
     Microseconds requestedStartUs = 0;
     Microseconds requestedEndUs = 0;
     std::string notes;
+    /// Needed only when the managed original is an encrypted container. Without
+    /// it an encrypted source is refused with a reason, rather than reaching
+    /// FFmpeg and coming back as an unrecognised format.
+    const crypto::SecretKey* key = nullptr;
 };
 
 /// What extracting a clip actually produced.

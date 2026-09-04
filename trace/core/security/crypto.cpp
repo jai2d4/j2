@@ -625,4 +625,155 @@ bool looksEncrypted(const std::filesystem::path& path) {
            std::memcmp(magic, kContainerMagic, sizeof(magic)) == 0;
 }
 
+Status encryptFileInPlace(const std::filesystem::path& path, const SecretKey& key) {
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) {
+        return Status::failure(ErrorCode::NotFound, "Nothing to encrypt at " + path.string());
+    }
+    if (looksEncrypted(path)) {
+        // Double-encrypting is not a harmless no-op: the result needs to be
+        // peeled a number of times nothing records, so it is refused rather than
+        // done twice. Re-registering an already-stored asset is the way this
+        // would happen, and it should be visible when it does.
+        return Status::failure(ErrorCode::AlreadyExists,
+                               "That file is already an encrypted container: " + path.string());
+    }
+
+    const auto size = std::filesystem::file_size(path, ec);
+    if (ec) {
+        return Status::failure(ErrorCode::IoError, "Could not size " + path.string(), ec.message());
+    }
+
+    // Beside the target, not in the system temp directory: a rename across
+    // filesystems is a copy, and a copy of a plaintext derived asset through
+    // /tmp is exactly the leak this whole change exists to close.
+    const auto temporary = std::filesystem::path(path).concat(".enc-tmp");
+
+    {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) {
+            return Status::failure(ErrorCode::IoError, "Could not read " + path.string());
+        }
+
+        EncryptedFileWriter writer;
+        if (auto status = writer.begin(temporary, key, static_cast<std::uint64_t>(size)); !status) {
+            return status;
+        }
+
+        std::vector<std::uint8_t> buffer(kDefaultChunkBytes);
+        std::uint64_t written = 0;
+        while (written < size) {
+            in.read(reinterpret_cast<char*>(buffer.data()),
+                    static_cast<std::streamsize>(buffer.size()));
+            const auto got = static_cast<std::size_t>(in.gcount());
+            if (got == 0) break;
+            if (auto status = writer.write(buffer.data(), got); !status) {
+                std::filesystem::remove(temporary, ec);
+                return status;
+            }
+            written += got;
+        }
+        // finish() refuses a container shorter than its header promised, which
+        // is what catches a source file that shrank underneath the read.
+        if (auto status = writer.finish(); !status) {
+            std::filesystem::remove(temporary, ec);
+            return status;
+        }
+    }
+
+    std::filesystem::rename(temporary, path, ec);
+    if (ec) {
+        std::error_code cleanup;
+        std::filesystem::remove(temporary, cleanup);
+        return Status::failure(ErrorCode::IoError,
+                               "Could not replace " + path.string() + " with its encrypted form",
+                               ec.message());
+    }
+    return Status::success();
+}
+
+Status decryptFileTo(const std::filesystem::path& container,
+                     const std::filesystem::path& destination, const SecretKey& key) {
+    EncryptedFileReader reader;
+    if (auto status = reader.open(container, key); !status) return status;
+
+    std::error_code ec;
+    std::filesystem::create_directories(destination.parent_path(), ec);
+
+    std::ofstream out(destination, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return Status::failure(ErrorCode::IoError, "Could not write " + destination.string());
+    }
+
+    std::vector<std::uint8_t> buffer(kDefaultChunkBytes);
+    std::uint64_t offset = 0;
+    while (offset < reader.size()) {
+        auto got = reader.read(offset, buffer.data(), buffer.size());
+        if (!got) return Status(got.error());
+        const std::size_t bytes = got.take();
+        if (bytes == 0) {
+            // The header promised more than the file held. Leaving a short file
+            // behind would hand somebody a truncated exhibit that still looks
+            // like a complete one.
+            std::filesystem::remove(destination, ec);
+            return Status::failure(ErrorCode::IntegrityFailure,
+                                   "The container ended before its recorded length",
+                                   "Read " + std::to_string(offset) + " of " +
+                                       std::to_string(reader.size()) + " bytes");
+        }
+        out.write(reinterpret_cast<const char*>(buffer.data()),
+                  static_cast<std::streamsize>(bytes));
+        if (!out) {
+            std::filesystem::remove(destination, ec);
+            return Status::failure(ErrorCode::IoError,
+                                   "Could not write " + destination.string());
+        }
+        offset += bytes;
+    }
+    out.close();
+    if (!out) {
+        std::filesystem::remove(destination, ec);
+        return Status::failure(ErrorCode::IoError, "Could not finish " + destination.string());
+    }
+    return Status::success();
+}
+
+Result<std::vector<std::uint8_t>> readWholeFile(const std::filesystem::path& path,
+                                                const SecretKey* key) {
+    using ResultType = Result<std::vector<std::uint8_t>>;
+
+    if (!looksEncrypted(path)) {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) {
+            return ResultType::failure(ErrorCode::NotFound, "Could not read " + path.string());
+        }
+        return ResultType::success(std::vector<std::uint8_t>(
+            std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()));
+    }
+
+    if (key == nullptr) {
+        return ResultType::failure(
+            ErrorCode::PermissionDenied, "That file is encrypted and no key was given",
+            "Unlock the workspace before reading " + path.filename().string() + ".");
+    }
+
+    EncryptedFileReader reader;
+    if (auto status = reader.open(path, *key); !status) return ResultType(status.error());
+
+    std::vector<std::uint8_t> plain(static_cast<std::size_t>(reader.size()));
+    std::uint64_t offset = 0;
+    while (offset < reader.size()) {
+        auto got = reader.read(offset, plain.data() + offset,
+                               static_cast<std::size_t>(reader.size() - offset));
+        if (!got) return ResultType(got.error());
+        const std::size_t bytes = got.take();
+        if (bytes == 0) {
+            return ResultType::failure(ErrorCode::IntegrityFailure,
+                                       "The container ended before its recorded length");
+        }
+        offset += bytes;
+    }
+    return ResultType::success(std::move(plain));
+}
+
 }  // namespace trace::crypto

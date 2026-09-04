@@ -585,7 +585,11 @@ void MainWindow::openEvidenceInViewer(const Evidence& evidence) {
                     task.reportFinished(false, QString());
                     return;
                 }
-                auto loaded = context->waveforms().load(asset.value());
+                // The same key: the envelope this just built is now stored in a
+                // container like every other derived asset, and reading it back
+                // without one would leave the timeline blank for a recording
+                // that has sound.
+                auto loaded = context->waveforms().load(asset.value(), key.get());
                 if (!loaded) {
                     task.reportFinished(false, QString());
                     return;

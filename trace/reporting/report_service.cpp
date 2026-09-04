@@ -356,7 +356,10 @@ Result<ExportOutcome> ReportService::exportReport(
             if (!exported) return fail("Could not export a frame: " + exported.error().message());
             const DerivedAsset asset = exported.take();
 
-            auto added = writer.addExhibit(layout_.resolve(asset.storageRelPath), asset.filename);
+            // Decrypted on the way into the bundle: a bundle is checked with
+            // sha256sum by somebody who has neither TRACE nor the key.
+            auto added = writer.addExhibit(layout_.resolve(asset.storageRelPath), asset.filename,
+                                           key.get());
             if (!added) return fail(added.error().message());
             reports_->attachDerivedAsset(item.id, asset.id);
 
@@ -383,12 +386,19 @@ Result<ExportOutcome> ReportService::exportReport(
             clipRequest.requestedEndUs = *item.rangeEndUs;
             clipRequest.notes = "Exhibit for report " + outcome.report.title;
 
+            auto clipKeyResult = evidence_.caseKey(source->caseId);
+            if (!clipKeyResult) return fail(clipKeyResult.error().message());
+            // Named rather than chained off take(): the handle owns the key and
+            // the pointer must not outlive it.
+            const CaseKeyHandle clipKey = clipKeyResult.take();
+            clipRequest.key = clipKey.get();
+
             auto exported = clips_.exportClip(clipRequest);
             if (!exported) return fail("Could not extract a clip: " + exported.error().message());
             const ClipExportOutcome clip = exported.take();
 
-            auto added =
-                writer.addExhibit(layout_.resolve(clip.asset.storageRelPath), clip.asset.filename);
+            auto added = writer.addExhibit(layout_.resolve(clip.asset.storageRelPath),
+                                           clip.asset.filename, clipKey.get());
             if (!added) return fail(added.error().message());
             reports_->attachDerivedAsset(item.id, clip.asset.id);
 
