@@ -47,7 +47,11 @@ def mock_gemini():
         fake_response = MagicMock()
         fake_response.text = json.dumps(payload)
         m.ai_client.models.generate_content = MagicMock(return_value=fake_response)
-        m.ai_client.files.upload = MagicMock(return_value=MagicMock(name="files/fake"))
+        fake_file = MagicMock()
+        fake_file.name = "files/fake"
+        fake_file.state.name = "ACTIVE"
+        m.ai_client.files.upload = MagicMock(return_value=fake_file)
+        m.ai_client.files.get = MagicMock(return_value=fake_file)
         return payload
 
     _set()  # sensible default so tests that don't customize still get a valid response

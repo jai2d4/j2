@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     UPLOAD_TMP_DIR: str = "/tmp/tru_uploads"
     MAX_UPLOAD_MB: int = 500
+    GEMINI_FILE_PROCESSING_TIMEOUT_S: int = 21600
+    GEMINI_FILE_POLL_INTERVAL_S: int = 5
 
     def _normalized_dsn(self) -> str:
         """A plain postgresql:// DSN (no driver suffix) from whichever config

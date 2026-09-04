@@ -7,13 +7,14 @@ Module 4  → /api/v1/scout/truth-report   (combined film + sieve output)
 Module 5  → db/init_schema.sql, app.core.db, app.routers.{athletes,evaluations}
 Module 6  → /api/v1/scout/makeup-grade   (Profile & Makeup grade-down)
 """
+import asyncio
 import json
 import logging
 import os
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from google import genai
@@ -52,6 +53,7 @@ Path(settings.UPLOAD_TMP_DIR).mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTS = (".mp4", ".mov", ".avi")
 YOUTUBE_HOSTS = ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be")
+FILM_JOBS: dict[str, dict] = {}
 
 
 def _is_youtube_url(url: str) -> bool:
@@ -146,18 +148,122 @@ async def analyze_player_film(
         with open(video_path, "wb") as buffer:
             buffer.write(data)
 
-        video_file = ai_client.files.upload(file=video_path)
+        video_file = await asyncio.to_thread(ai_client.files.upload, file=video_path)
+        video_file = await _wait_for_gemini_file(video_file)
         return await _run_film_analysis(video_file, position, player_identifier)
     finally:
         if os.path.exists(video_path):
             os.remove(video_path)
 
 
+def _file_state_name(video_file) -> Optional[str]:
+    """Return the Files API state as a stable uppercase string."""
+    state = getattr(video_file, "state", None)
+    if state is None:
+        return None
+    name = getattr(state, "name", None)
+    return str(name or state).upper()
+
+
+async def _wait_for_gemini_file(video_file):
+    """Wait until Gemini has processed an uploaded video before grading it."""
+    deadline = asyncio.get_running_loop().time() + settings.GEMINI_FILE_PROCESSING_TIMEOUT_S
+    while True:
+        state = _file_state_name(video_file)
+        if state == "ACTIVE":
+            return video_file
+        if state == "FAILED":
+            raise HTTPException(status_code=502, detail="Gemini could not process this video file.")
+        if asyncio.get_running_loop().time() >= deadline:
+            raise HTTPException(status_code=504, detail="Gemini video processing timed out. Please try again.")
+        await asyncio.sleep(settings.GEMINI_FILE_POLL_INTERVAL_S)
+        video_file = await asyncio.to_thread(ai_client.files.get, name=video_file.name)
+
+
+async def _process_film_job(
+    job_id: str,
+    position: Position,
+    player_identifier: Optional[str],
+    video_path: Optional[str] = None,
+    youtube_url: Optional[str] = None,
+) -> None:
+    """Run long film grading after the upload request has returned."""
+    try:
+        FILM_JOBS[job_id] = {"status": "processing", "message": "Sending film to Gemini."}
+        if video_path:
+            video_file = await asyncio.to_thread(ai_client.files.upload, file=video_path)
+            FILM_JOBS[job_id] = {"status": "processing", "message": "Gemini is processing the film."}
+            video_content = await _wait_for_gemini_file(video_file)
+        else:
+            video_content = types.Part(file_data=types.FileData(file_uri=youtube_url))
+        FILM_JOBS[job_id] = {"status": "processing", "message": "Gemini is grading the player."}
+        result = await _run_film_analysis(video_content, position, player_identifier)
+        FILM_JOBS[job_id] = {"status": "complete", "result": result}
+    except HTTPException as exc:
+        FILM_JOBS[job_id] = {"status": "failed", "error": str(exc.detail)}
+    except Exception as exc:
+        logger.exception("film job %s failed", job_id)
+        FILM_JOBS[job_id] = {"status": "failed", "error": str(exc)}
+    finally:
+        if video_path and os.path.exists(video_path):
+            os.remove(video_path)
+
+
+@app.post("/api/v1/scout/analyze-film/jobs", dependencies=[Depends(require_api_key)])
+async def create_film_job(
+    background_tasks: BackgroundTasks,
+    file: Optional[UploadFile] = File(None),
+    youtube_url: Optional[str] = Form(None),
+    position: Position = Form(Position.DB),
+    player_identifier: Optional[str] = Form(None),
+):
+    """Accept a long film and grade it asynchronously so HTTP limits cannot cancel it."""
+    if bool(file) == bool(youtube_url):
+        raise HTTPException(status_code=400, detail="Provide exactly one of: a video file upload, or a youtube_url.")
+    if youtube_url and not _is_youtube_url(youtube_url):
+        raise HTTPException(status_code=400, detail="Not a valid YouTube URL.")
+
+    job_id = str(uuid4())
+    video_path = None
+    if file:
+        if not file.filename or not file.filename.lower().endswith(ALLOWED_EXTS):
+            raise HTTPException(status_code=400, detail="Invalid video format.")
+        suffix = Path(file.filename).suffix.lower()
+        video_path = os.path.join(settings.UPLOAD_TMP_DIR, f"{job_id}{suffix}")
+        written = 0
+        try:
+            with open(video_path, "wb") as buffer:
+                while chunk := await file.read(1024 * 1024):
+                    written += len(chunk)
+                    if written > settings.MAX_UPLOAD_MB * 1024 * 1024:
+                        raise HTTPException(status_code=413, detail="File exceeds upload limit.")
+                    buffer.write(chunk)
+        except Exception:
+            if os.path.exists(video_path):
+                os.remove(video_path)
+            raise
+
+    FILM_JOBS[job_id] = {"status": "queued", "message": "Film received; grading is queued."}
+    background_tasks.add_task(
+        _process_film_job, job_id, position, player_identifier, video_path, youtube_url
+    )
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/api/v1/scout/analyze-film/jobs/{job_id}", dependencies=[Depends(require_api_key)])
+async def get_film_job(job_id: str):
+    job = FILM_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Film grading job not found.")
+    return {"job_id": job_id, **job}
+
+
 async def _run_film_analysis(
     video_content, position: Position, player_identifier: Optional[str] = None,
 ) -> dict:
     try:
-        response = ai_client.models.generate_content(
+        response = await asyncio.to_thread(
+            ai_client.models.generate_content,
             model=settings.GEMINI_MODEL,
             contents=[video_content, build_scouting_prompt(position, player_identifier)],
             config=types.GenerateContentConfig(response_mime_type="application/json"),

@@ -1017,45 +1017,15 @@ const CRITICAL_FACTORS={
   DB:["Play speed","Recovery speed / range","Man coverage (mirror / trail / press)","Zone / off-coverage awareness","Ball skills / judgment","Space athletic ability / balance","Tackling in space","Position / plant & drive","Urgency","Reactionary athletic ability","Teams value","Toughness"],
 };
 
-// Simulated Gemini film grades (live build calls gemini-3.5-flash with the
-// same critical-factors rules) — deterministic so the demo always shows
-// one Game-Changer flag and one NGE flag alongside ordinary grades.
-function simulatedFilmGrades(pos, playerId){
-  const factors=CRITICAL_FACTORS[pos]||CRITICAL_FACTORS.DB;
-  // Cycle through the three ordinary grades only; GAME_CHANGER and NGE are
-  // reserved for the two chosen extreme indices below, so every extreme
-  // grade always has a matching flag — never an unflagged green/red pill.
-  const fill=["WIN_PLUS","WIN","WIN_MINUS"];
-  const gcIndex=0, ngeIndex=Math.min(4,factors.length-1);
-  const film_grades={};
-  factors.forEach((f,i)=>{
-    if(i===gcIndex) film_grades[f]="GAME_CHANGER";
-    else if(i===ngeIndex) film_grades[f]="NGE";
-    else film_grades[f]=fill[i%fill.length];
-  });
-  const flags=[];
-  const gcFactor=factors[0], ngeFactor=factors[ngeIndex];
-  flags.push(`Elite ${gcFactor.toLowerCase()} — a legitimate difference-maker trait on tape.`);
-  if(ngeFactor!==gcFactor) flags.push(`${ngeFactor} graded NGE — a real deficiency shows up repeatedly on this film.`);
-  return {
-    player_identified: true,
-    identification_note: playerId
-      ? `(Simulated) Tracked "${playerId}" throughout the clip.`
-      : "(Simulated) No player_identifier given — assumed single-subject clip.",
-    film_grades, flags,
-  };
-}
-
 // ===== Film upload pipeline (Module 1) =====
-// Tries the real backend first; falls back to simulated output so the demo
-// works standalone. When this page is served BY the FastAPI app itself
+// Uses the real backend only. When this page is served BY the FastAPI app itself
 // (locally on :8000, or from the deployed Render URL) location.origin is
 // already the API's own origin, so a relative path just works. Opening
 // this file directly off disk (file://) has no usable origin, so fall
 // back to localhost:8000 for local dev.
 let filmState = {name:null, mode:null, analysis:null};
 const API_BASE = location.origin.startsWith("http") ? location.origin : "http://localhost:8000";
-const API = API_BASE + "/api/v1/scout/analyze-film";
+const API = API_BASE + "/api/v1/scout/analyze-film/jobs";
 
 function pipelineHTML(steps){
   return '<div class="pipeline">'+steps.map(s=>
@@ -1096,19 +1066,31 @@ async function _submitFilm(fd, uploadedLabel, safeName){
 
   // Attempt live backend
   try{
-    const ctl=new AbortController(); setTimeout(()=>ctl.abort(),90000);
-    const res=await fetch(API,{method:"POST",body:fd,signal:ctl.signal});
-    if(!res.ok) throw new Error("HTTP "+res.status);
-    const data=await res.json();
+    const res=await fetch(API,{method:"POST",body:fd});
+    if(!res.ok){
+      let detail=`HTTP ${res.status}`;
+      try{const err=await res.json(); if(err.detail) detail=err.detail;}catch(_ignored){}
+      throw new Error(detail);
+    }
+    const created=await res.json();
+    let data;
+    while(true){
+      await new Promise(r=>setTimeout(r,5000));
+      const statusRes=await fetch(`${API}/${created.job_id}`);
+      if(!statusRes.ok) throw new Error(`Could not check grading status (HTTP ${statusRes.status})`);
+      const status=await statusRes.json();
+      if(status.status==="failed") throw new Error(status.error||"Real Gemini grading failed");
+      if(status.status==="complete"){data=status.result;break;}
+      box.innerHTML=`<div class="filmname">${safeName}</div>`+
+        pipelineHTML([{label:"upload received",state:"done"},{label:escapeHtml(status.message||"Gemini is processing the film"),state:"active"},{label:"real grades will appear when complete",state:""}]);
+    }
     filmState.mode="live"; filmState.analysis=data.analysis;
     box.innerHTML=`<div class="filmname">${safeName}</div>`+
       pipelineHTML([{label:"upload received",state:"done"},{label:"gemini-3.5-flash ingestion",state:"done"},{label:"analysis complete — LIVE API",state:"done"}]);
   }catch(e){
-    // Backend not running → simulate the pipeline so the UX is still visible
-    await new Promise(r=>setTimeout(r,900));
+    filmState.mode="error"; filmState.analysis=null;
     box.innerHTML=`<div class="filmname">${safeName}</div>`+
-      pipelineHTML([{label:"upload received",state:"done"},{label:"backend offline — simulated analysis",state:"done"},{label:"start uvicorn on :8000 for live Gemini calls",state:"active"}]);
-    filmState.mode="simulated"; filmState.analysis=simulatedFilmGrades(document.getElementById("position").value, playerIdentifier());
+      pipelineHTML([{label:"upload received",state:"done"},{label:"real Gemini grading failed",state:"err"},{label:escapeHtml(e.message||"Unknown error"),state:"err"}]);
   }
   run();
 }
@@ -1239,7 +1221,7 @@ function run(){
     ${makeupHTML}
     <div class="film">
       <h2 style="margin-bottom:8px">${icon("play")}Film <span class="accent">Analysis</span> — gemini-3.5-flash
-        <span class="tag">${filmState.mode==="live"?"LIVE API RESULT":filmState.mode==="simulated"?"SIMULATED — BACKEND OFFLINE":"AWAITING FILM UPLOAD"}</span></h2>
+        <span class="tag">${filmState.mode==="live"?"LIVE API RESULT":filmState.mode==="error"?"GRADING FAILED":"AWAITING FILM UPLOAD"}</span></h2>
       ${filmState.analysis?renderFilmAnalysis(filmState):'<div class="empty" style="padding:18px">No film uploaded yet — drop a clip in the Film Upload panel to populate this section.</div>'}
     </div>
     </div>`;

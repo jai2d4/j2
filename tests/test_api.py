@@ -69,6 +69,31 @@ def test_analyze_film_player_not_identified(client, mock_gemini):
     assert body["film_grades"] == {}
 
 
+def test_uploaded_video_waits_until_gemini_file_is_active(client, mock_gemini, monkeypatch):
+    import app.main as m
+    from unittest.mock import MagicMock
+
+    processing = MagicMock()
+    processing.name = "files/fake"
+    processing.state.name = "PROCESSING"
+    active = MagicMock()
+    active.name = "files/fake"
+    active.state.name = "ACTIVE"
+    m.ai_client.files.upload.return_value = processing
+    m.ai_client.files.get.return_value = active
+    monkeypatch.setattr(m.settings, "GEMINI_FILE_POLL_INTERVAL_S", 0)
+
+    r = client.post(
+        "/api/v1/scout/analyze-film",
+        data={"position": "DB", "player_identifier": "red jersey #12"},
+        files={"file": ("clip.mov", b"video-bytes", "video/quicktime")},
+    )
+
+    assert r.status_code == 200
+    m.ai_client.files.get.assert_called_once_with(name="files/fake")
+    assert r.json()["film_grades"] == {"Toughness": "WIN"}
+
+
 def test_truth_report_end_to_end(client, mock_gemini):
     mock_gemini(film_grades={"Toughness": "WIN"}, flags=[])
     r = client.post("/api/v1/scout/truth-report", data={
