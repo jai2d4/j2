@@ -93,11 +93,18 @@ jobs:
           fi
 
   windows:
-    # Builds without SQLCipher, so encryption at rest is not exercised here: the
-    # find module degrades rather than failing, the 40 encryption tests skip, and
-    # the registered test count is the same as Linux so the floor still applies.
-    # That makes the Windows encrypted path written and unproven, which
-    # docs/ENCRYPTION.md section 8 says in as many words.
+    # Builds *with* SQLCipher, so encryption at rest is exercised on Windows and
+    # not merely assumed to work there. The vcpkg port installs its header at
+    # include/sqlcipher/sqlite3.h and its import library as sqlcipher.lib, which
+    # is what FindEncryptionBackend.cmake already searches for — nothing in that
+    # module is Linux-specific, and this job is what demonstrates it.
+    #
+    # Plain sqlite3 is deliberately not installed alongside it. SQLCipher is a
+    # fork of SQLite that exports the same symbols, and with both present the
+    # header search can land on the wrong sqlite3.h. The module would catch that
+    # and degrade, which is the safe outcome and also the useless one: a job that
+    # silently builds an unencrypted TRACE and passes is exactly how this path
+    # stayed unproven. Hence the assertion after configure.
     name: Windows (Server 2022, MSVC)
     runs-on: windows-2022
     steps:
@@ -158,9 +165,11 @@ jobs:
           "ORT_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "$root\lib" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      - name: Install SQLite and GoogleTest
+      - name: Install SQLCipher, OpenSSL and GoogleTest
         shell: pwsh
-        run: vcpkg install sqlite3:x64-windows gtest:x64-windows
+        # openssl is a dependency of the sqlcipher port and would be pulled in
+        # anyway; naming it makes the requirement visible rather than incidental.
+        run: vcpkg install sqlcipher:x64-windows openssl:x64-windows gtest:x64-windows
 
       - name: Fetch detection model
         shell: pwsh
@@ -187,7 +196,28 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=x64-windows `
             -DCMAKE_PREFIX_PATH="$env:FFMPEG_ROOT" `
-            -DTRACE_ONNXRUNTIME_ROOT="$env:ORT_ROOT"
+            -DTRACE_WITH_ENCRYPTION=ON `
+            -DTRACE_ONNXRUNTIME_ROOT="$env:ORT_ROOT" 2>&1 | Tee-Object -FilePath configure.log
+
+      # The step that makes this job prove something. FindEncryptionBackend
+      # degrades rather than failing when SQLCipher or libcrypto is missing —
+      # correct behaviour for a developer, and worthless for a job whose whole
+      # purpose is to demonstrate the Windows encrypted path builds. Without
+      # this, a broken vcpkg install would produce a green run that had quietly
+      # tested nothing.
+      - name: Require that encryption was actually enabled
+        shell: pwsh
+        working-directory: trace
+        run: |
+          $summary = Select-String -Path configure.log -Pattern 'Encryption \.+ (TRUE|FALSE)'
+          if (-not $summary) {
+            throw "The configure summary did not report an encryption state at all."
+          }
+          Write-Host $summary.Line.Trim()
+          if ($summary.Line -notmatch 'TRUE') {
+            throw ("Encryption is OFF in this build. SQLCipher or libcrypto was not found, " +
+                   "so this job would have tested an unencrypted TRACE and called it a pass.")
+          }
 
       - name: Build
         working-directory: trace
@@ -210,6 +240,36 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --output-on-failure --timeout 300
+
+      # The other half of proving the encrypted path. Every encryption test
+      # begins with `if (!crypto::available()) GTEST_SKIP()`, so on a build
+      # without SQLCipher they all skip and ctest still reports success. A green
+      # run and a run that exercised encryption are different things, and this is
+      # what tells them apart.
+      - name: Require that the encryption tests ran rather than skipped
+        shell: pwsh
+        working-directory: trace/build
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $output = ctest -R 'Encrypted|Keyring|Crypto' --output-on-failure 2>&1 | Out-String
+          Write-Host $output
+          if ($output -match '(\d+) tests passed, (\d+) tests failed out of (\d+)') {
+            $passed = [int]$Matches[1]
+            $total  = [int]$Matches[3]
+          } else {
+            throw "Could not read a test summary from ctest."
+          }
+          if ($total -lt 20) {
+            throw ("Only $total encryption tests were registered. Expected the full set — " +
+                   "a shrunken selection here means the suite changed shape and this check " +
+                   "is no longer measuring what it was written to measure.")
+          }
+          if ($output -match 'Skipped') {
+            throw ("An encryption test skipped itself, which on this job means " +
+                   "crypto::available() returned false and encryption is not actually working.")
+          }
+          Write-Host "$passed of $total encryption tests ran and passed on Windows."
 
       - name: Check the suite did not silently shrink
         shell: pwsh
