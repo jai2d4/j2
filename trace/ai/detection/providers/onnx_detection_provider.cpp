@@ -6,6 +6,7 @@
 #include <array>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <mutex>
 
 #include "ai/detection/models/class_taxonomy.h"
@@ -60,6 +61,88 @@ std::vector<std::string> OnnxDetectionProvider::availableExecutionProviders() {
     }
 }
 
+namespace {
+
+/// What actually executed the model, as opposed to what was asked for.
+///
+/// ## Why asking is not enough
+///
+/// `GetAvailableProviders()` reports what the ONNX Runtime *build* was compiled
+/// with. On a GPU whose architecture that build has no kernels for, it answers
+/// "CUDA is available" — truthfully, and uselessly. Appending the CUDA provider
+/// then succeeds as well, because appending only registers it. The session is
+/// created without complaint, ONNX Runtime quietly assigns every node to the
+/// CPU, and nothing in any of those three steps returns an error.
+///
+/// TRACE used to record `CUDA:0` on the strength of exactly that sequence. The
+/// result was a run record, and a `deviceInUse` on every detection, naming an
+/// accelerator that had not run a single node. For a tool whose entire claim is
+/// that its records describe what happened, that is the wrong kind of wrong.
+///
+/// ## Why the profile
+///
+/// ONNX Runtime exposes no session-level or device-level provider query — there
+/// is `GetAvailableProviders` and nothing else. The one thing that names the
+/// provider which executed each node is the profile, so this runs a single
+/// inference over a zero tensor with profiling on and reads the answer out.
+///
+/// Returns the provider name, or empty when it could not be determined — which
+/// callers must not read as "CPU". Not knowing and knowing it was the CPU are
+/// different facts, and only one of them should be written down as one.
+std::string observedExecutionProvider(Ort::Session& session, const std::string& inputName,
+                                      const std::string& outputName,
+                                      const std::vector<std::int64_t>& shape,
+                                      const Ort::MemoryInfo& memoryInfo) {
+    try {
+        std::int64_t elements = 1;
+        std::vector<std::int64_t> concrete = shape;
+        for (auto& dimension : concrete) {
+            // A dynamic axis is reported as -1; one sample is enough to see
+            // which provider picks up the work.
+            if (dimension <= 0) dimension = 1;
+            elements *= dimension;
+        }
+        if (elements <= 0 || elements > 64 * 1024 * 1024) return {};
+
+        std::vector<float> input(static_cast<std::size_t>(elements), 0.0F);
+        Ort::Value tensor = Ort::Value::CreateTensor<float>(
+            memoryInfo, input.data(), input.size(), concrete.data(), concrete.size());
+
+        const char* inputNames[] = {inputName.c_str()};
+        const char* outputNames[] = {outputName.c_str()};
+        session.Run(Ort::RunOptions{nullptr}, inputNames, &tensor, 1, outputNames, 1);
+
+        Ort::AllocatorWithDefaultOptions allocator;
+        // Also stops profiling, which matters: left on, it would keep writing a
+        // record of every frame of a real analysis run.
+        auto profilePath = session.EndProfilingAllocated(allocator);
+        if (profilePath.get() == nullptr) return {};
+
+        const std::filesystem::path profile(profilePath.get());
+        std::ifstream in(profile, std::ios::binary);
+        std::string contents((std::istreambuf_iterator<char>(in)),
+                             std::istreambuf_iterator<char>());
+        in.close();
+
+        std::error_code ec;
+        std::filesystem::remove(profile, ec);
+
+        if (contents.empty()) return {};
+        // The profile names a provider per node, so a provider that ran nothing
+        // does not appear. Checked in the order that matters: any CUDA node at
+        // all means the accelerator did work.
+        if (contents.find("CUDAExecutionProvider") != std::string::npos) return "CUDA:0";
+        if (contents.find("CPUExecutionProvider") != std::string::npos) return "CPU";
+        return {};
+    } catch (const std::exception&) {
+        // A probe that fails tells us nothing, which is different from telling
+        // us the CPU ran it.
+        return {};
+    }
+}
+
+}  // namespace
+
 bool OnnxDetectionProvider::cudaAvailable() {
     const auto providers = availableExecutionProviders();
     return std::find(providers.begin(), providers.end(), "CUDAExecutionProvider") != providers.end();
@@ -112,16 +195,23 @@ Status OnnxDetectionProvider::initialise(const DetectionProviderConfig& config) 
 
         // GPU when asked for and genuinely available; otherwise say so and use
         // the CPU rather than failing the whole analysis.
+        //
+        // Nothing here decides what gets recorded. Appending the provider says
+        // it was offered to the session, not that it will run anything, and the
+        // difference is the whole reason observedExecutionProvider exists.
+        bool cudaRequested = false;
         if (config.device == DevicePreference::Gpu || config.device == DevicePreference::Auto) {
             if (cudaAvailable()) {
                 try {
                     OrtCUDAProviderOptions cudaOptions{};
                     options.AppendExecutionProvider_CUDA(cudaOptions);
-                    deviceInUse = "CUDA:0";
+                    cudaRequested = true;
+                    // Only when a GPU is in play: profiling costs a file and an
+                    // inference, and on the CPU path there is nothing to doubt.
+                    options.EnableProfiling(ORT_TSTR("trace-ep-probe"));
                 } catch (const Ort::Exception& error) {
                     logWarn(kComponent, "CUDA execution provider unavailable; using CPU",
                             JsonValue::object().set("detail", error.what()));
-                    deviceInUse = "CPU";
                 }
             } else if (config.device == DevicePreference::Gpu) {
                 logWarn(kComponent,
@@ -167,6 +257,38 @@ Status OnnxDetectionProvider::initialise(const DetectionProviderConfig& config) 
                                    "grid-decoding strategy in its descriptor");
         }
 
+        // ------------------------------------------------- what actually ran
+        //
+        // Asked after the session exists, because before it exists there is
+        // nothing to ask. A provider that was offered and a provider that
+        // executed are different facts, and only the second is true enough to
+        // put in a run record.
+        if (cudaRequested) {
+            const std::string observed = observedExecutionProvider(
+                *impl_->session, impl_->inputName, impl_->outputName, inputShape,
+                impl_->memoryInfo);
+            if (observed == "CUDA:0") {
+                deviceInUse = "CUDA:0";
+            } else if (observed == "CPU") {
+                // The documented failure on a GPU whose architecture this build
+                // has no kernels for. It is not an error — the analysis runs
+                // correctly, just not where the operator expected — so it is
+                // reported rather than refused.
+                logWarn(kComponent,
+                        "CUDA was requested and accepted, but the model ran on the CPU. This "
+                        "ONNX Runtime build has no kernels for this GPU's architecture.",
+                        JsonValue::object().set("recorded_device", "CPU"));
+                deviceInUse = "CPU";
+            } else {
+                // The probe could not tell. Saying CPU would be a guess and
+                // saying CUDA would be the original defect, so the record says
+                // what is true: it was requested, and it is unconfirmed.
+                logWarn(kComponent,
+                        "CUDA was requested but which provider executed could not be confirmed");
+                deviceInUse = "CUDA:0 (unconfirmed)";
+            }
+        }
+
         impl_->info = ProviderInfo{};
         impl_->info.name = "ONNX Runtime (local)";
         impl_->info.version = runtimeVersion();
@@ -176,6 +298,8 @@ Status OnnxDetectionProvider::initialise(const DetectionProviderConfig& config) 
         impl_->info.modelSha256 = config.modelSha256;
         impl_->info.modelPath = config.modelPath.string();
         impl_->info.deviceInUse = deviceInUse;
+        // "unconfirmed" still means an accelerator was in play, so downstream
+        // records treat it as one rather than silently demoting it to CPU.
         impl_->info.acceleratorInUse = deviceInUse != "CPU";
 
         impl_->capabilities = DetectionCapabilities{};

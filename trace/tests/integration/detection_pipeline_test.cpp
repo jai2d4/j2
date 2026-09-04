@@ -13,6 +13,7 @@
 #include "ai/detection/detection_provider_registry.h"
 #include "ai/detection/models/model_manager.h"
 #include "ai/detection/providers/mock_detection_provider.h"
+#include "ai/detection/providers/onnx_detection_provider.h"
 #include "analysis/analysis_pipeline.h"
 #include "core/security/file_hasher.h"
 #include "tests/support/test_environment.h"
@@ -287,6 +288,93 @@ TEST_F(DetectionPipelineTest, AnInvalidModelFailsTheRunWithoutTouchingEvidence) 
     auto reopened = stack->cases->findByCaseNumber(owner.caseNumber);
     ASSERT_TRUE(reopened.ok());
     EXPECT_TRUE(reopened.value().has_value());
+}
+
+// ------------------------------------------------ which device actually ran
+//
+// These guard a specific defect: TRACE used to record "CUDA:0" on the strength
+// of the CUDA provider being *compiled into* the ONNX Runtime build, which says
+// nothing about whether the GPU present is one that build has kernels for. On a
+// GPU it does not support, ONNX Runtime assigns every node to the CPU without
+// returning an error anywhere, and the run record named an accelerator that had
+// not executed a single node.
+//
+// The machine these run on has no GPU, so what is verified here is the negative
+// half: a GPU request on a machine that cannot serve it is recorded as CPU and
+// never as CUDA. The positive half — a supported GPU being correctly reported
+// as CUDA:0 — needs a GPU and is not executed here.
+
+/// Builds a provider config for the installed model, or nothing when it is absent.
+std::optional<DetectionProviderConfig> realModelConfig(DevicePreference device) {
+    if (!testing::realDetectionModelAvailable()) return std::nullopt;
+    const auto descriptor = ModelManager::describe("yolox-tiny");
+    if (!descriptor.has_value()) return std::nullopt;
+
+    DetectionProviderConfig config;
+    config.modelPath = testing::modelsDirectory() / descriptor->fileName;
+    config.modelName = descriptor->name;
+    config.modelVersion = descriptor->version;
+    config.modelFamily = descriptor->family;
+    config.inputWidth = descriptor->inputWidth;
+    config.inputHeight = descriptor->inputHeight;
+    config.inputIsBgr = descriptor->inputIsBgr;
+    config.inputScaledTo01 = descriptor->inputScaledTo01;
+    config.padValue = descriptor->padValue;
+    config.strides = descriptor->strides;
+    config.performsOwnNms = descriptor->performsOwnNms;
+    config.classes = descriptor->classes;
+    config.device = device;
+    return config;
+}
+
+TEST(ExecutionProvider, AGpuRequestThatCannotBeServedIsRecordedAsCpuNotAsCuda) {
+    auto config = realModelConfig(DevicePreference::Gpu);
+    if (!config) GTEST_SKIP() << "the detection model is not installed";
+
+    OnnxDetectionProvider provider;
+    auto status = provider.initialise(*config);
+    ASSERT_TRUE(status.ok()) << status.error().toString();
+
+    const std::string device = provider.info().deviceInUse;
+
+    // The assertion that would have failed before this was fixed. Asking for a
+    // GPU must never be enough on its own to have one written down.
+    EXPECT_EQ(device, "CPU")
+        << "a GPU request was recorded as '" << device
+        << "' on a machine with no usable CUDA device";
+    EXPECT_FALSE(provider.info().acceleratorInUse);
+}
+
+TEST(ExecutionProvider, ACpuRequestIsUnaffected) {
+    auto config = realModelConfig(DevicePreference::Cpu);
+    if (!config) GTEST_SKIP() << "the detection model is not installed";
+
+    OnnxDetectionProvider provider;
+    ASSERT_TRUE(provider.initialise(*config).ok());
+    EXPECT_EQ(provider.info().deviceInUse, "CPU");
+    EXPECT_FALSE(provider.info().acceleratorInUse);
+}
+
+TEST(ExecutionProvider, WhatIsReportedIsAlwaysSomethingThatCouldHaveRun) {
+    auto config = realModelConfig(DevicePreference::Auto);
+    if (!config) GTEST_SKIP() << "the detection model is not installed";
+
+    OnnxDetectionProvider provider;
+    ASSERT_TRUE(provider.initialise(*config).ok());
+
+    // Whatever the machine, the recorded device is one of three honest answers:
+    // the CPU ran it, CUDA ran it, or CUDA was requested and could not be
+    // confirmed. A fourth — CUDA asserted without evidence — is the defect.
+    const std::string device = provider.info().deviceInUse;
+    const bool honest = device == "CPU" || device == "CUDA:0" ||
+                        device == "CUDA:0 (unconfirmed)";
+    EXPECT_TRUE(honest) << "unexpected device string: " << device;
+
+    // And it must agree with what the build can actually offer.
+    if (device != "CPU") {
+        EXPECT_TRUE(OnnxDetectionProvider::cudaAvailable())
+            << "an accelerator was recorded by a build with no CUDA provider";
+    }
 }
 
 TEST_F(DetectionPipelineTest, AMissingModelIsReportedRatherThanDownloaded) {
