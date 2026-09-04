@@ -42,6 +42,13 @@ JsonValue captureProvenance(const CameraSource& camera, const CaptureSegment& se
             .set("segment_ended_at", segment.endedAt)
             .set("segment_duration_us", segment.durationUs)
             .set("frames_written", segment.framesWritten)
+            // Zero on a camera that timestamps everything it sends. Non-zero
+            // says TRACE placed that many packets on the recording's own
+            // timeline because the camera gave it nothing to place them by —
+            // which an examiner asking how the timing was established needs to
+            // see, rather than a timeline that silently implies the camera
+            // supplied it.
+            .set("timestamps_synthesised", segment.timestampsSynthesised)
             .set("bytes_written", segment.bytesWritten)
             .set("sha256", segment.sha256)
             // Named so nothing downstream has to infer it from the absence of a

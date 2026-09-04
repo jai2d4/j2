@@ -231,7 +231,7 @@ every run and require it to be identical.
 ctest --test-dir trace/build --output-on-failure
 ```
 
-313 test cases in six suites:
+316 test cases in six suites:
 
 - **`trace_unit_tests`** (121) — SHA-256 against published NIST vectors, identifier and
   timecode handling, JSON escaping, managed storage paths, migrations and drift
@@ -242,7 +242,7 @@ ctest --test-dir trace/build --output-on-failure
 - **`trace_ui_unit_tests`** (6) — overlay geometry under letterboxing, hit-testing,
   colour semantics, and a byte-level check that drawing boxes leaves the decoded frame
   untouched.
-- **`trace_integration_tests`** (169) — ingestion against the real sample file,
+- **`trace_integration_tests`** (172) — ingestion against the real sample file,
   persistence across a restart, integrity failure detection, decoding, accurate seeking,
   frame stepping, playback, frame export, the whole detection pipeline including real
   inference against real footage, encryption both ways, and live capture from a real

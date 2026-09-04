@@ -26,12 +26,14 @@
 #include "media/capture/capture_session.h"
 #include "media/capture/discovery.h"
 #include "media/ffmpeg/video_decoder.h"
+#include "tests/support/rtsp_server.h"
 #include "tests/support/stream_server.h"
 #include "tests/support/test_environment.h"
 
 namespace trace {
 namespace {
 
+using testing::RtspServer;
 using testing::StreamServer;
 using testing::TemporaryDirectory;
 
@@ -540,6 +542,142 @@ TEST(CameraCapture, SplittingAtASizeLimitIsNotAGapAndDoesNotDropTheCamera) {
     }
 }
 
+// ---------------------------------------------------------------- RTSP
+//
+// Until these existed, docs/CAMERA_INGEST.md section 0 listed the RTSP
+// handshake as not executed: the capture tests reached avformat through an HTTP
+// socket, which exercises everything downstream of the handshake and none of
+// the handshake itself. RtspServer closes that gap — see its header for what is
+// real about it and what it deliberately is not.
+
+TEST(CameraRtsp, RecordsFromARealRtspUrlAndTheHandshakeActuallyHappens) {
+    TemporaryDirectory scratch("trace-rtsp");
+    RtspServer server;
+    ASSERT_TRUE(server.start(testing::sampleVideoPath())) << "could not open a loopback socket";
+
+    auto camera = cameraSourceFromUri(server.url(), "RTSP camera");
+    ASSERT_TRUE(camera.ok()) << camera.error().toString();
+    EXPECT_EQ(camera.value().transport, CameraTransport::NetworkStream);
+
+    CaptureSession session;
+    CaptureSettings settings;
+    settings.maximumDurationMs = 20'000;
+    settings.openTimeoutSeconds = 8;
+    settings.reconnectWindowMs = 500;
+
+    auto recorded = session.record(camera.take(), scratch.path(), "cam", settings);
+    ASSERT_TRUE(recorded.ok()) << recorded.error().toString();
+    const CaptureOutcome outcome = recorded.take();
+
+    // The handshake, step by step. Asserted separately from the recording
+    // because "a file appeared" does not prove the negotiation happened — and
+    // proving the negotiation is the entire reason this server exists.
+    EXPECT_TRUE(server.sawDescribe()) << "the client never asked for the SDP";
+    EXPECT_TRUE(server.sawSetup()) << "the client never set up a transport";
+    EXPECT_TRUE(server.sawPlay()) << "the client never started the stream";
+
+    ASSERT_FALSE(outcome.segments.empty()) << "the RTSP capture produced no segments";
+    const CaptureSegment& segment = outcome.segments.front();
+
+    // This server sends no RTCP sender reports, so the first packet — the one
+    // carrying the parameter sets and the first keyframe — arrives before any
+    // RTP-to-wall-clock mapping exists. TRACE places it at the start of the
+    // segment and counts the substitution instead of aborting the capture on
+    // it, which is what it used to do.
+    EXPECT_GE(segment.timestampsSynthesised, 1)
+        << "expected the first RTSP packet to need a timestamp";
+    EXPECT_GT(segment.bytesWritten, 0);
+    EXPECT_GT(segment.framesWritten, 0);
+    EXPECT_FALSE(segment.sha256.empty());
+
+    // The digest is of the file that exists, as with every other capture.
+    auto rehashed = hashFile(segment.path);
+    ASSERT_TRUE(rehashed.ok());
+    EXPECT_EQ(rehashed.take(), segment.sha256);
+
+    // And what came off the wire decodes.
+    auto opened = VideoDecoder::open(segment.path);
+    ASSERT_TRUE(opened.ok()) << "the RTSP recording does not decode: " << opened.error().toString();
+    EXPECT_GT(opened.value()->info().width, 0);
+    EXPECT_GT(opened.value()->info().height, 0);
+    auto frame = opened.value()->nextFrame();
+    ASSERT_TRUE(frame.ok()) << frame.error().toString();
+    EXPECT_TRUE(frame.value().valid());
+}
+
+TEST(CameraRtsp, TheRecordingIsTheCamerasOwnBitstream) {
+    TemporaryDirectory scratch("trace-rtsp-codec");
+    RtspServer server;
+    RtspServer::Options options;
+    options.packetDelayMs = 2;
+    ASSERT_TRUE(server.start(testing::sampleVideoPath(), options));
+
+    auto camera = cameraSourceFromUri(server.url());
+    ASSERT_TRUE(camera.ok());
+
+    CaptureSession session;
+    CaptureSettings settings;
+    settings.maximumDurationMs = 20'000;
+    settings.openTimeoutSeconds = 8;
+    settings.reconnectWindowMs = 500;
+    auto recorded = session.record(camera.take(), scratch.path(), "cam", settings);
+    ASSERT_TRUE(recorded.ok()) << recorded.error().toString();
+    ASSERT_FALSE(recorded.value().segments.empty());
+
+    auto source = VideoDecoder::open(testing::sampleVideoPath());
+    ASSERT_TRUE(source.ok());
+    auto captured = VideoDecoder::open(recorded.value().segments.front().path);
+    ASSERT_TRUE(captured.ok()) << captured.error().toString();
+
+    // Same codec and dimensions after a trip through RTP packetisation and
+    // reassembly: the packets were carried, not transcoded.
+    EXPECT_EQ(captured.value()->info().codecName, source.value()->info().codecName);
+    EXPECT_EQ(captured.value()->info().width, source.value()->info().width);
+    EXPECT_EQ(captured.value()->info().height, source.value()->info().height);
+}
+
+TEST(CameraRtsp, ADroppedRtspConnectionIsRecordedAsAGap) {
+    TemporaryDirectory scratch("trace-rtsp-gap");
+    RtspServer server;
+    RtspServer::Options options;
+    options.packetDelayMs = 2;
+    options.dropAfterPackets = 120;  // hang up mid-stream
+    ASSERT_TRUE(server.start(testing::sampleVideoPath(), options));
+
+    auto camera = cameraSourceFromUri(server.url());
+    ASSERT_TRUE(camera.ok());
+
+    CaptureSession session;
+    CaptureSettings settings;
+    settings.maximumDurationMs = 30'000;
+    settings.openTimeoutSeconds = 4;
+    settings.reconnectWindowMs = 1'500;
+    settings.reconnectDelayMs = 200;
+
+    auto recorded = session.record(camera.take(), scratch.path(), "cam", settings);
+    ASSERT_TRUE(recorded.ok()) << recorded.error().toString();
+    const CaptureOutcome outcome = recorded.take();
+
+    EXPECT_TRUE(server.sawPlay());
+    ASSERT_FALSE(outcome.segments.empty()) << "nothing was recorded before the drop";
+
+    // This server serves one connection, so the camera does not come back. The
+    // capture ends and says why — an ending, not a gap, exactly as a camera
+    // switched off mid-recording is treated over any other transport.
+    EXPECT_TRUE(outcome.continuous());
+    EXPECT_FALSE(outcome.failureReason.empty())
+        << "the connection dropped and the capture did not say why it ended";
+
+    // What was recorded before the drop is intact and playable, which is the
+    // property Matroska was chosen for.
+    for (const auto& segment : outcome.segments) {
+        EXPECT_TRUE(segment.complete);
+        EXPECT_FALSE(segment.sha256.empty());
+        EXPECT_TRUE(VideoDecoder::open(segment.path).ok())
+            << segment.path.string() << " does not decode";
+    }
+}
+
 TEST(CameraCapture, ABluetoothSourceIsRefusedBeforeAnyFileIsCreated) {
     TemporaryDirectory scratch("trace-capture-bt");
     CameraSource camera;
@@ -606,12 +744,16 @@ TEST(CaptureProvenance, SaysThereIsNoOriginalAndCarriesNoCredentials) {
     outcome.segments.push_back(segment);
     outcome.wallClockMs = 30'000;
 
+    segment.timestampsSynthesised = 2;
+
     const std::string json =
         captureProvenance(parsed.value(), segment, outcome, std::nullopt).dump();
 
     // The claim that distinguishes a capture from an import, stated rather than
     // left to be inferred from a missing field.
     EXPECT_NE(json.find("no_original_exists"), std::string::npos);
+    // How the timing was established is part of how the recording was made.
+    EXPECT_NE(json.find("timestamps_synthesised"), std::string::npos);
     EXPECT_NE(json.find("first generation"), std::string::npos);
     EXPECT_NE(json.find(segment.sha256), std::string::npos);
     EXPECT_NE(json.find("network_stream"), std::string::npos);

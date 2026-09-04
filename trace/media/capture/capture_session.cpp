@@ -371,6 +371,10 @@ Result<CaptureOutcome> CaptureSession::record(const CameraSource& camera,
 
             Microseconds firstPtsUs = -1;
             Microseconds lastPtsUs = 0;
+            // In the input stream's own time base, so a packet that arrives
+            // without a timestamp lands next to its neighbours rather than at
+            // an arbitrary point.
+            std::int64_t lastTimestamp = 0;
             bool rollSegment = false;
 
             while (true) {
@@ -410,6 +414,32 @@ Result<CaptureOutcome> CaptureSession::record(const CameraSource& camera,
 
                 AVStream* in = impl_->input->streams[packet->stream_index];
                 AVStream* out = impl_->output->streams[mapped];
+
+                // A camera that sends a packet with no timestamp is ordinary,
+                // not a fault: an RTSP depacketiser routinely delivers the first
+                // packet — the one carrying the parameter sets and the first
+                // keyframe — before any RTP timestamp has been established. The
+                // muxer refuses such a packet with EINVAL, and because a write
+                // failure ends the capture, that first packet killed the whole
+                // recording and left a container with nothing in it.
+                //
+                // Discarding it instead would be worse: without that first IDR
+                // nothing decodes until the next keyframe, which on a camera
+                // with a long GOP is seconds of unplayable recording. So it is
+                // placed where it actually belongs — the start of this segment
+                // — and the substitution is counted, because provenance must
+                // not imply the camera supplied timing it did not.
+                if (packet->pts == AV_NOPTS_VALUE) packet->pts = packet->dts;
+                if (packet->pts == AV_NOPTS_VALUE) {
+                    packet->pts = lastTimestamp;
+                    ++segment.timestampsSynthesised;
+                }
+                // Matroska requires non-decreasing decode timestamps, and a
+                // stream copy has no reordering of its own to preserve.
+                if (packet->dts == AV_NOPTS_VALUE || packet->dts > packet->pts) {
+                    packet->dts = packet->pts;
+                }
+                lastTimestamp = packet->pts;
 
                 if (packet->stream_index == videoStream && packet->pts != AV_NOPTS_VALUE) {
                     const Microseconds pts =

@@ -57,6 +57,13 @@ struct CaptureSegment {
     Microseconds durationUs = 0;
     std::int64_t bytesWritten = 0;
     std::int64_t framesWritten = 0;
+    /// Packets the camera sent with no usable timestamp, placed on the
+    /// recording's own timeline instead. Recorded rather than left implicit: a
+    /// capture's provenance must not imply the camera supplied timing it did
+    /// not. Normally 1 — the first packet of an RTSP stream, which carries the
+    /// parameter sets and the first keyframe before any RTP timestamp has been
+    /// established.
+    std::int64_t timestampsSynthesised = 0;
     /// SHA-256 of the finished file. Empty until the segment is closed, because
     /// until then there is no file to hash — stating it earlier would be stating
     /// a digest of something still being written.
