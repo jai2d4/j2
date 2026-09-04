@@ -14,6 +14,11 @@ target_compile_definitions(trace_test_support PUBLIC
     TRACE_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
     TRACE_TEST_MODELS_DIR="${PROJECT_SOURCE_DIR}/models")
 
+# The HTTP and RTSP test servers are socket code; see media/CMakeLists.txt.
+if(WIN32)
+    target_link_libraries(trace_test_support PUBLIC ws2_32)
+endif()
+
 # ------------------------------------------------------------------ unit tests
 add_executable(trace_unit_tests
     unit/sha256_test.cpp

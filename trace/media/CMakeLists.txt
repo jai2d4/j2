@@ -42,4 +42,12 @@ if(TRACE_WITH_OPENCV)
     target_compile_definitions(trace_media PUBLIC TRACE_WITH_OPENCV=1)
 endif()
 
+# ONVIF discovery opens a UDP socket, and on Windows the socket API lives in
+# ws2_32 rather than the C runtime. Nothing linked it, so discovery.cpp resolved
+# on Linux and produced seventeen unresolved externals on MSVC — code that had
+# shipped in the camera work and could not have linked on Windows at all.
+if(WIN32)
+    target_link_libraries(trace_media PUBLIC ws2_32)
+endif()
+
 trace_apply_common_options(trace_media)
