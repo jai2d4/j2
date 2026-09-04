@@ -24,13 +24,7 @@ async def main() -> None:
     settings = get_settings()
     sql = SCHEMA_PATH.read_text()
 
-    conn = await asyncpg.connect(
-        host=settings.POSTGRES_HOST,
-        port=settings.POSTGRES_PORT,
-        user=settings.POSTGRES_USER,
-        password=settings.POSTGRES_PASSWORD,
-        database=settings.POSTGRES_DB,
-    )
+    conn = await asyncpg.connect(dsn=settings.asyncpg_dsn)
     try:
         # No bind params -> asyncpg uses the simple query protocol, which
         # allows multiple ';'-separated statements in one call.
