@@ -76,18 +76,39 @@ Result<ManifestEntry> BundleWriter::recordFile(const std::filesystem::path& abso
 }
 
 Result<ManifestEntry> BundleWriter::addExhibit(const std::filesystem::path& source,
-                                               const std::string& name) {
+                                               const std::string& name,
+                                               const crypto::SecretKey* key) {
     std::error_code ec;
     if (!std::filesystem::exists(source, ec)) {
         return Result<ManifestEntry>::failure(ErrorCode::NotFound,
                                               "Exhibit source is missing: " + source.string());
     }
     const auto destination = exhibitsDirectory() / name;
-    std::filesystem::copy_file(source, destination,
-                               std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec) {
-        return Result<ManifestEntry>::failure(
-            ErrorCode::IoError, "Could not copy exhibit into the bundle: " + ec.message());
+
+    // Decided by looking at the file rather than by whether a key was handed
+    // over, so a workspace holding both encrypted and pre-encryption assets
+    // produces one kind of bundle.
+    if (crypto::looksEncrypted(source)) {
+        if (key == nullptr) {
+            // Copying the container would produce a bundle whose manifest
+            // digests are of ciphertext — verifiable, and of the wrong thing.
+            // Anyone checking it would get a match and still not have the
+            // exhibit.
+            return Result<ManifestEntry>::failure(
+                ErrorCode::PermissionDenied,
+                "That exhibit is encrypted and no key was given: " + name,
+                "Unlock the workspace before exporting a bundle.");
+        }
+        if (auto status = crypto::decryptFileTo(source, destination, *key); !status) {
+            return Result<ManifestEntry>(status.error());
+        }
+    } else {
+        std::filesystem::copy_file(source, destination,
+                                   std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) {
+            return Result<ManifestEntry>::failure(
+                ErrorCode::IoError, "Could not copy exhibit into the bundle: " + ec.message());
+        }
     }
     return recordFile(destination, "exhibits/" + name);
 }

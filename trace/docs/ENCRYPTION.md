@@ -176,17 +176,35 @@ unchanged.
 
 Read this section before telling anyone the evidence is encrypted.
 
-1. **Derived assets are still in the clear.** Thumbnails, waveform envelopes,
-   exported frames and clips are written to managed storage unencrypted. A
-   thumbnail is a frame of the recording, so this is a real weakening of the
-   claim, not a technicality. It is the next piece of work; it is listed here
-   rather than glossed over because "the evidence is encrypted" is not currently
-   true of everything derived from it.
+1. **Derived assets are encrypted too, as of the change that removed this from
+   the list.** Thumbnails, waveform envelopes, exported frames and clips all go
+   into the same AES-256-GCM containers under the same case key. A thumbnail is
+   a frame of the recording, so leaving it in the clear made "the evidence is
+   encrypted" false in the way that mattered.
+
+   Two properties are worth stating because they are easy to get backwards:
+
+   - **The recorded digest and size describe the plaintext**, not the container
+     — the same rule evidence follows. A report citing the SHA-256 of an
+     exported frame is citing the frame, so an examiner handed that frame can
+     check it.
+   - **A locked workspace refuses to produce derived assets** rather than
+     writing them in the clear. `DerivedAssetService::registerAsset` fails with
+     `PermissionDenied` and the caller removes the file it had written.
+
+   Whether a stored asset is a container is decided by looking at the file, not
+   by whether a key is available, so a workspace encrypted after the fact keeps
+   working: assets written before the switch stay readable as plain files.
 
 2. **Exhibit bundles and reports are unencrypted, on purpose.** They exist to be
    handed to somebody who does not have TRACE and verified with `sha256sum`. An
-   encrypted exhibit would defeat the point. Protecting them is a matter of how
-   they are transported, and that is outside the software.
+   encrypted exhibit would defeat the point, so `BundleWriter::addExhibit`
+   decrypts on the way into the bundle. Protecting a bundle is a matter of how
+   it is transported, and that is outside the software.
+
+   A bundle export from a locked workspace fails rather than copying containers
+   in: a manifest of ciphertext digests would verify perfectly and still not
+   hand anyone the exhibit.
 
 3. **A running TRACE holds the key in memory.** This protects a disk at rest — a
    stolen laptop, a decommissioned drive, a backup tape. It does nothing against
@@ -217,9 +235,15 @@ Read this section before telling anyone the evidence is encrypted.
    it finishes.
 
 8. **Nothing here is a substitute for disk encryption.** Operating-system full
-   disk encryption protects everything, including the derived assets in (1) and
-   the temporary files any application writes. TRACE's encryption is narrower
-   and complements it; it is not a reason to turn the other off.
+   disk encryption protects everything, including the temporary files any
+   application writes and the scratch space FFmpeg and Qt use. TRACE's
+   encryption is narrower and complements it; it is not a reason to turn the
+   other off.
+
+9. **A bundle you have exported is plaintext on disk.** That is the point of it
+   (see 2), but it means an exported bundle sitting in an operator's downloads
+   folder is not protected by any of this. It is a file to be handed over and
+   then removed, not a second copy of the case to leave lying about.
 
 ---
 

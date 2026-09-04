@@ -20,12 +20,17 @@
 #include "core/services/evidence_service.h"
 #include "core/services/integrity_service.h"
 #include "core/services/workspace_service.h"
+#include "core/services/derived_asset_service.h"
+#include "media/audio/waveform_service.h"
+#include "media/export/clip_export_service.h"
 #include "media/ffmpeg/audio_decoder.h"
 #include "media/ffmpeg/media_probe.h"
 #include "media/ffmpeg/video_decoder.h"
+#include "media/thumbnails/frame_export_service.h"
 #include "core/database/migrations.h"
 #include "core/security/crypto.h"
 #include "core/security/keyring.h"
+#include "core/security/sha256.h"
 #include "tests/support/test_environment.h"
 
 namespace trace {
@@ -558,6 +563,10 @@ struct EncryptedStack {
     std::unique_ptr<CaseService> cases;
     std::unique_ptr<EvidenceService> evidence;
     std::unique_ptr<IntegrityService> integrity;
+    std::shared_ptr<DerivedAssetService> derivedAssets;
+    std::unique_ptr<FrameExportService> frames;
+    std::unique_ptr<WaveformService> waveforms;
+    std::unique_ptr<ClipExportService> clips;
 
     explicit EncryptedStack(const std::string& prefix) : root(prefix) {}
 
@@ -580,6 +589,10 @@ struct EncryptedStack {
         evidence = std::make_unique<EvidenceService>(
             database, *layout, audit, std::make_shared<FFmpegMetadataExtractor>(), keys);
         integrity = std::make_unique<IntegrityService>(database, *layout, audit, keys);
+        derivedAssets = std::make_shared<DerivedAssetService>(database, *layout, audit, keys);
+        frames = std::make_unique<FrameExportService>(*layout, derivedAssets);
+        waveforms = std::make_unique<WaveformService>(*layout, derivedAssets);
+        clips = std::make_unique<ClipExportService>(*layout, derivedAssets);
         return true;
     }
 };
@@ -595,7 +608,9 @@ protected:
         UserContext::current().setAuthenticatedAccount(account);
     }
 
+public:
     /// Copies the sample recording somewhere an ingestion can take it from.
+    /// Public because the derived-asset cases below reuse it from free helpers.
     static std::filesystem::path stageSource(const std::filesystem::path& directory) {
         std::filesystem::create_directories(directory);
         const auto source = directory / "sample.mp4";
@@ -833,6 +848,261 @@ TEST_F(EncryptedWorkspace, ConversionIsSafeToRunTwice) {
     auto again = WorkspaceService::encryptExistingWorkspace(root.path(), kOperator, kPassword);
     EXPECT_TRUE(again.ok()) << again.error().toString();
     EXPECT_TRUE(WorkspaceService::inspect(root.path()).databaseEncrypted);
+}
+
+// --------------------------------------------------- derived assets
+
+/// A case with one ingested recording in an encrypted workspace.
+struct EncryptedCase {
+    Case caseRecord;
+    Evidence evidence;
+};
+
+EncryptedCase ingestOne(EncryptedStack& stack, const std::string& caseNumber) {
+    CaseDraft draft;
+    draft.caseNumber = caseNumber;
+    draft.title = "Derived assets";
+    draft.investigator = "A. Analyst";
+    auto created = stack.cases->createCase(draft);
+    EncryptedCase result;
+    if (!created) return result;
+    result.caseRecord = created.take();
+
+    IngestRequest request;
+    request.caseId = result.caseRecord.id;
+    request.sourcePath = EncryptedWorkspace::stageSource(stack.root.path() / caseNumber);
+    auto ingested = stack.evidence->ingest(request);
+    if (!ingested) return result;
+    result.evidence = ingested.take().evidence;
+    return result;
+}
+
+TEST_F(EncryptedWorkspace, AThumbnailIsNotLeftInTheClearBesideAnEncryptedOriginal) {
+    EncryptedStack stack("trace-derived-thumb");
+    ASSERT_TRUE(stack.open());
+    const EncryptedCase owner = ingestOne(stack, "CASE-DER-1");
+    ASSERT_FALSE(owner.evidence.id.empty());
+
+    auto key = stack.evidence->caseKey(owner.caseRecord.id);
+    ASSERT_TRUE(key.ok()) << key.error().toString();
+    const CaseKeyHandle handle = key.take();
+
+    auto thumbnail = stack.frames->ensureThumbnail(owner.caseRecord.id,
+                                                   owner.caseRecord.caseNumber, owner.evidence,
+                                                   320, handle.get());
+    ASSERT_TRUE(thumbnail.ok()) << thumbnail.error().toString();
+    const DerivedAsset asset = thumbnail.take();
+
+    // The whole point of this change. A thumbnail is a frame of the recording;
+    // in the clear it is the recording, at lower resolution.
+    const auto stored = stack.layout->resolve(asset.storageRelPath);
+    ASSERT_TRUE(std::filesystem::exists(stored));
+    EXPECT_TRUE(crypto::looksEncrypted(stored))
+        << "the thumbnail is stored in the clear inside an encrypted workspace";
+
+    // Not a PNG on disk any more — the magic bytes are the container's.
+    const std::string onDisk = fileContents(stored);
+    ASSERT_GE(onDisk.size(), 8u);
+    EXPECT_NE(onDisk.substr(1, 3), "PNG");
+
+    // And it decrypts back to a PNG whose digest is the one that was recorded.
+    auto plain = crypto::readWholeFile(stored, handle.get());
+    ASSERT_TRUE(plain.ok()) << plain.error().toString();
+    const std::vector<std::uint8_t> bytes = plain.take();
+    ASSERT_GE(bytes.size(), 8u);
+    EXPECT_EQ(std::string(bytes.begin() + 1, bytes.begin() + 4), "PNG");
+}
+
+TEST_F(EncryptedWorkspace, ADerivedAssetsRecordedDigestAndSizeDescribeThePlaintext) {
+    EncryptedStack stack("trace-derived-digest");
+    ASSERT_TRUE(stack.open());
+    const EncryptedCase owner = ingestOne(stack, "CASE-DER-2");
+    ASSERT_FALSE(owner.evidence.id.empty());
+
+    auto key = stack.evidence->caseKey(owner.caseRecord.id);
+    ASSERT_TRUE(key.ok());
+    const CaseKeyHandle handle = key.take();
+
+    auto thumbnail = stack.frames->ensureThumbnail(owner.caseRecord.id,
+                                                   owner.caseRecord.caseNumber, owner.evidence,
+                                                   320, handle.get());
+    ASSERT_TRUE(thumbnail.ok()) << thumbnail.error().toString();
+    const DerivedAsset asset = thumbnail.take();
+
+    auto plain = crypto::readWholeFile(stack.layout->resolve(asset.storageRelPath), handle.get());
+    ASSERT_TRUE(plain.ok());
+    const std::vector<std::uint8_t> bytes = plain.take();
+
+    // Both fields describe the image, not the container it is stored in — the
+    // same rule evidence follows, so a report citing a digest is citing the
+    // thing an examiner can be handed.
+    Sha256 hasher;
+    hasher.update(bytes.data(), bytes.size());
+    EXPECT_EQ(asset.sha256.value_or(""), hasher.finalizeHex());
+    ASSERT_TRUE(asset.fileSize.has_value());
+    EXPECT_EQ(*asset.fileSize, static_cast<std::int64_t>(bytes.size()));
+
+    // The container really is larger, so the two numbers are genuinely different
+    // and this test would catch a swap.
+    const auto containerSize =
+        std::filesystem::file_size(stack.layout->resolve(asset.storageRelPath));
+    EXPECT_GT(containerSize, bytes.size());
+}
+
+TEST_F(EncryptedWorkspace, AWaveformIsStoredEncryptedAndStillLoads) {
+    EncryptedStack stack("trace-derived-wave");
+    ASSERT_TRUE(stack.open());
+    const EncryptedCase owner = ingestOne(stack, "CASE-DER-3");
+    ASSERT_FALSE(owner.evidence.id.empty());
+
+    auto key = stack.evidence->caseKey(owner.caseRecord.id);
+    ASSERT_TRUE(key.ok());
+    const CaseKeyHandle handle = key.take();
+
+    auto built = stack.waveforms->ensureWaveform(owner.caseRecord.id, owner.caseRecord.caseNumber,
+                                                 owner.evidence, 400, {}, handle.get());
+    ASSERT_TRUE(built.ok()) << built.error().toString();
+    const DerivedAsset asset = built.take();
+
+    const auto stored = stack.layout->resolve(asset.storageRelPath);
+    EXPECT_TRUE(crypto::looksEncrypted(stored))
+        << "the waveform is stored in the clear inside an encrypted workspace";
+
+    // A reader with the key gets the envelope back.
+    auto loaded = stack.waveforms->load(asset, handle.get());
+    ASSERT_TRUE(loaded.ok()) << loaded.error().toString();
+    EXPECT_GT(loaded.value().buckets(), 0u);
+
+    // A reader without one is told why, rather than shown an empty waveform for
+    // a recording that has sound.
+    auto blind = stack.waveforms->load(asset, nullptr);
+    EXPECT_FALSE(blind.ok());
+    if (!blind.ok()) {
+        EXPECT_EQ(blind.error().code(), ErrorCode::PermissionDenied);
+    }
+}
+
+TEST_F(EncryptedWorkspace, AClipCanBeExtractedFromAnEncryptedOriginal) {
+    EncryptedStack stack("trace-derived-clip");
+    ASSERT_TRUE(stack.open());
+    const EncryptedCase owner = ingestOne(stack, "CASE-DER-4");
+    ASSERT_FALSE(owner.evidence.id.empty());
+
+    auto key = stack.evidence->caseKey(owner.caseRecord.id);
+    ASSERT_TRUE(key.ok());
+    const CaseKeyHandle handle = key.take();
+
+    ClipExportRequest request;
+    request.caseId = owner.caseRecord.id;
+    request.caseNumber = owner.caseRecord.caseNumber;
+    request.evidence = owner.evidence;
+    request.requestedStartUs = 1'000'000;
+    request.requestedEndUs = 3'000'000;
+    request.key = handle.get();
+
+    // Clip export opened the managed original with a plain path, so in an
+    // encrypted workspace it met a container and reported it as an unreadable
+    // format. Encrypting the clip's *output* while its *input* could not be
+    // opened would have been half a feature.
+    auto exported = stack.clips->exportClip(request);
+    ASSERT_TRUE(exported.ok()) << exported.error().toString();
+    const ClipExportOutcome clip = exported.take();
+
+    const auto stored = stack.layout->resolve(clip.asset.storageRelPath);
+    ASSERT_TRUE(std::filesystem::exists(stored));
+    EXPECT_TRUE(crypto::looksEncrypted(stored));
+
+    // And the clip itself plays once decrypted.
+    auto opened = VideoDecoder::open(stored, handle.get());
+    ASSERT_TRUE(opened.ok()) << opened.error().toString();
+    EXPECT_GT(opened.value()->info().width, 0);
+}
+
+TEST_F(EncryptedWorkspace, ALockedWorkspaceRefusesToFileADerivedAssetInTheClear) {
+    EncryptedStack stack("trace-derived-locked");
+    ASSERT_TRUE(stack.open());
+    const EncryptedCase owner = ingestOne(stack, "CASE-DER-5");
+    ASSERT_FALSE(owner.evidence.id.empty());
+
+    const auto scratch = stack.root.path() / "scratch";
+    std::filesystem::create_directories(scratch);
+    const auto file = scratch / "something.png";
+    { std::ofstream out(file, std::ios::binary); out << "not really a png"; }
+
+    stack.keys->lock();
+
+    DerivedAssetRegistration registration;
+    registration.caseId = owner.caseRecord.id;
+    registration.caseNumber = owner.caseRecord.caseNumber;
+    registration.evidenceId = owner.evidence.id;
+    registration.evidenceNumber = owner.evidence.evidenceNumber;
+    registration.type = DerivedAssetType::FrameExport;
+    registration.file = file;
+    registration.operationType = "test";
+
+    // Registering it would put a cleartext artefact of the evidence into a
+    // workspace an operator has been told is encrypted, and record it as filed.
+    auto registered = stack.derivedAssets->registerAsset(registration);
+    ASSERT_FALSE(registered.ok());
+    EXPECT_EQ(registered.error().code(), ErrorCode::PermissionDenied);
+
+    // Nothing was written to the database, and the file is untouched — the
+    // caller still owns it and can decide what to do.
+    EXPECT_TRUE(std::filesystem::exists(file));
+    EXPECT_FALSE(crypto::looksEncrypted(file));
+    auto listed = stack.derivedAssets->listForEvidence(owner.evidence.id);
+    if (listed.ok()) {
+        for (const auto& asset : listed.value()) {
+            EXPECT_NE(asset.type, DerivedAssetType::FrameExport);
+        }
+    }
+}
+
+/// Deliberately a plain TEST rather than TEST_F(EncryptedWorkspace, ...).
+///
+/// The fixture skips itself when the build has no encryption support, and this
+/// is the one case that has to run *there* above all: it asserts the change did
+/// not turn every workspace into an encrypted one. Attached to the fixture it
+/// would have been skipped in exactly the build it exists to protect.
+TEST(UnencryptedWorkspace, StillWritesDerivedAssetsInTheClear) {
+    UserAccount account = UserContext::current().account();
+    account.role = UserRole::Administrator;
+    if (account.username.empty()) account.username = "test-operator";
+    if (account.id.empty()) account.id = generateUuid();
+    UserContext::current().setAuthenticatedAccount(account);
+
+    testing::TemporaryDirectory root("trace-derived-plain");
+    auto stack = testing::TestStack::create(root.path());
+
+    CaseDraft draft;
+    draft.title = "Plain";
+    auto created = stack.cases->createCase(draft);
+    ASSERT_TRUE(created.ok());
+    const Case caseRecord = created.take();
+
+    const auto incoming = root.path() / "incoming";
+    std::filesystem::create_directories(incoming);
+    const auto source = incoming / "sample.mp4";
+    std::filesystem::copy_file(testing::sampleVideoPath(), source,
+                               std::filesystem::copy_options::overwrite_existing);
+
+    IngestRequest request;
+    request.caseId = caseRecord.id;
+    request.sourcePath = source;
+    auto ingested = stack.evidence->ingest(request);
+    ASSERT_TRUE(ingested.ok()) << ingested.error().toString();
+    const Evidence evidence = ingested.take().evidence;
+
+    FrameExportService frames(*stack.layout, stack.derivedAssets);
+    auto thumbnail =
+        frames.ensureThumbnail(caseRecord.id, caseRecord.caseNumber, evidence, 320, nullptr);
+    ASSERT_TRUE(thumbnail.ok()) << thumbnail.error().toString();
+
+    const auto stored = stack.layout->resolve(thumbnail.value().storageRelPath);
+    EXPECT_FALSE(crypto::looksEncrypted(stored));
+    const std::string onDisk = fileContents(stored);
+    ASSERT_GE(onDisk.size(), 8u);
+    EXPECT_EQ(onDisk.substr(1, 3), "PNG");
 }
 
 }  // namespace

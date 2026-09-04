@@ -10,6 +10,7 @@
 #include "core/common/result.h"
 #include "core/models/derived_asset.h"
 #include "core/repositories/provenance_repository.h"
+#include "core/security/workspace_keys.h"
 #include "core/services/audit_service.h"
 #include "core/storage/storage_layout.h"
 
@@ -50,10 +51,31 @@ struct DerivedAssetRegistration {
 /// set — files it here and inherits the same chain.
 class DerivedAssetService {
 public:
+    /// `keys` may be null, which is what an unencrypted workspace looks like.
+    /// When it is present and the workspace is encrypted, every asset registered
+    /// here is written into a container before the row is inserted — and when
+    /// the workspace is locked, registration fails rather than leaving a
+    /// thumbnail of the evidence in the clear beside an encrypted original.
     DerivedAssetService(std::shared_ptr<Database> database, StorageLayout layout,
-                        std::shared_ptr<AuditService> audit);
+                        std::shared_ptr<AuditService> audit,
+                        std::shared_ptr<WorkspaceKeys> keys = nullptr);
 
+    /// Files a derived artefact with its provenance.
+    ///
+    /// ## What the recorded digest and size describe
+    ///
+    /// Both are of the **plaintext** — the image, the envelope, the clip — not
+    /// of the container it ends up stored in. That matches how evidence records
+    /// its own digest, and for the same reason: the number in the row is what
+    /// identifies the content, and it has to stay that number whatever TRACE
+    /// does to store it. A report citing the SHA-256 of an exported frame is
+    /// citing the frame, and an examiner handed that frame can check it.
     Result<DerivedAsset> registerAsset(const DerivedAssetRegistration& registration);
+
+    /// The key that opens a case's derived assets, or an empty handle when the
+    /// workspace is not encrypted. Readers go through here so there is one
+    /// answer rather than one per caller.
+    Result<CaseKeyHandle> caseKey(const std::string& caseId) const;
 
     /// Records an operation that produced no derived asset.
     ///
@@ -83,6 +105,7 @@ private:
     std::shared_ptr<ProvenanceRepository> repository_;
     StorageLayout layout_;
     std::shared_ptr<AuditService> audit_;
+    std::shared_ptr<WorkspaceKeys> keys_;
 };
 
 }  // namespace trace

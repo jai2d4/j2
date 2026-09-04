@@ -210,5 +210,41 @@ private:
 /// security check: it says what a file claims to be, not that it is intact.
 bool looksEncrypted(const std::filesystem::path& path);
 
+// ------------------------------------------------------------ whole-file use
+//
+// The streaming reader and writer above exist for evidence: files too large to
+// hold in memory, read at arbitrary offsets by a decoder. Derived assets are the
+// other shape — a thumbnail, a waveform envelope, an exported frame — small
+// enough to read whole and always used whole. These three wrap the same
+// container so that case does not have to reimplement chunking, and so there is
+// one place where "encrypt this file" means one thing.
+
+/// Replaces `path` with an encrypted container holding what it contained.
+///
+/// Writes a temporary file beside the target and renames it into place, so an
+/// interruption leaves either the original or the container — never a truncated
+/// file that is neither. Refuses a file that is already a container rather than
+/// double-encrypting it, which would be unrecoverable without knowing how many
+/// layers to peel.
+Status encryptFileInPlace(const std::filesystem::path& path, const SecretKey& key);
+
+/// Writes the plaintext of a container to `destination`.
+///
+/// Used where something outside TRACE has to read the result — an exhibit
+/// bundle is the case that matters, since a bundle exists to be verified with
+/// `sha256sum` by somebody who does not have TRACE or the key.
+Status decryptFileTo(const std::filesystem::path& container,
+                     const std::filesystem::path& destination, const SecretKey& key);
+
+/// Reads a whole file, decrypting it when it is a container.
+///
+/// The decision is made by looking at the file, not by whether a key was passed:
+/// a workspace holds both, because everything written before encryption was
+/// switched on is still a plain file. A container with no key is an error and
+/// not an empty result — silently returning nothing would show an operator an
+/// empty waveform for a recording that has one.
+Result<std::vector<std::uint8_t>> readWholeFile(const std::filesystem::path& path,
+                                                const SecretKey* key);
+
 }  // namespace crypto
 }  // namespace trace

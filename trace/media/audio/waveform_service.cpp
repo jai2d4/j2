@@ -92,20 +92,25 @@ Result<DerivedAsset> WaveformService::ensureWaveform(
     return ResultType::success(registered.take());
 }
 
-Result<Waveform> WaveformService::load(const DerivedAsset& asset) const {
+Result<Waveform> WaveformService::load(const DerivedAsset& asset,
+                                       const crypto::SecretKey* key) const {
     using ResultType = Result<Waveform>;
     if (asset.type != DerivedAssetType::Waveform) {
         return ResultType::failure(ErrorCode::InvalidArgument, "That asset is not a waveform");
     }
 
     const auto path = layout_.resolve(asset.storageRelPath);
-    std::ifstream in(path, std::ios::binary);
-    if (!in) {
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) {
         return ResultType::failure(ErrorCode::NotFound,
                                    "The waveform file is missing: " + path.string());
     }
-    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    return Waveform::fromJson(text);
+
+    auto bytes = crypto::readWholeFile(path, key);
+    if (!bytes) return ResultType(bytes.error());
+
+    const std::vector<std::uint8_t> plain = bytes.take();
+    return Waveform::fromJson(std::string(plain.begin(), plain.end()));
 }
 
 }  // namespace trace

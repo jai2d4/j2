@@ -62,7 +62,9 @@ analyst's.
 | **GPU inference (CUDA)** | **Written and guarded, never executed here** — this environment has no GPU; see `docs/PHASE1_TESTING.md` |
 | **Face recognition, identity, plates, tracking, re-identification** | **Not implemented, by design** — see `docs/ROADMAP.md` |
 
-| **Encryption at rest** — case database and evidence | Working | SQLCipher for the database, AES-256-GCM containers for the recordings. Derived assets are still in the clear; see `docs/ENCRYPTION.md` §6 |
+| **Encryption at rest** — case database, evidence and everything derived from it | Working | SQLCipher for the database, AES-256-GCM containers for the recordings, and the same containers for thumbnails, waveforms, exported frames and clips. See `docs/ENCRYPTION.md` §6 for what it still does not protect |
+| Recorded digests describe the plaintext, not the container | Working | The SHA-256 of an exported frame is the frame's, so an examiner handed that frame can check it |
+| Exhibit bundles are decrypted on the way out | Working | A bundle exists to be verified with `sha256sum` by somebody who has neither TRACE nor the key |
 | Encrypting an existing workspace | Working | `--encrypt-workspace`; resumable, and verified against each item's ingestion digest before its original is replaced |
 | More than one operator per encrypted workspace | Working | Each holds their own wrapped copy of the master key; a password change re-wraps 32 bytes, not the case load |
 
@@ -229,7 +231,7 @@ every run and require it to be identical.
 ctest --test-dir trace/build --output-on-failure
 ```
 
-307 test cases in six suites:
+313 test cases in six suites:
 
 - **`trace_unit_tests`** (121) — SHA-256 against published NIST vectors, identifier and
   timecode handling, JSON escaping, managed storage paths, migrations and drift
@@ -240,7 +242,7 @@ ctest --test-dir trace/build --output-on-failure
 - **`trace_ui_unit_tests`** (6) — overlay geometry under letterboxing, hit-testing,
   colour semantics, and a byte-level check that drawing boxes leaves the decoded frame
   untouched.
-- **`trace_integration_tests`** (163) — ingestion against the real sample file,
+- **`trace_integration_tests`** (169) — ingestion against the real sample file,
   persistence across a restart, integrity failure detection, decoding, accurate seeking,
   frame stepping, playback, frame export, the whole detection pipeline including real
   inference against real footage, encryption both ways, and live capture from a real

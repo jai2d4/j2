@@ -5,6 +5,7 @@
 
 #include "core/common/logging.h"
 #include "core/common/uuid.h"
+#include "media/ffmpeg/encrypted_io.h"
 #include "media/ffmpeg/ffmpeg_support.h"
 
 extern "C" {
@@ -87,13 +88,32 @@ Result<ClipExportOutcome> ClipExportService::exportClip(const ClipExportRequest&
     const auto destination = layout_.exportsDirectory(request.caseId) / filename;
     std::filesystem::create_directories(destination.parent_path(), ec);
 
+    // Declared before `contexts`: the decrypting IO context must outlive the
+    // format context that points at it, and locals are destroyed in reverse
+    // order of declaration. VideoDecoder::Impl orders its members the same way
+    // and for the same reason.
+    EncryptedMediaIo io;
+
     RemuxContexts contexts;
     ClipExportOutcome outcome;
     outcome.requestedStartUs = request.requestedStartUs;
     outcome.requestedEndUs = request.requestedEndUs;
 
     // ------------------------------------------------------------- input
-    int rc = avformat_open_input(&contexts.input, source.string().c_str(), nullptr, nullptr);
+    //
+    // Through the decrypting IO layer when the managed original is a container,
+    // and by plain path when it is not. Deciding by looking at the file rather
+    // than by whether a key was passed is what lets one workspace hold both:
+    // everything ingested before encryption was switched on is still a plain
+    // file. Without this, a clip from an encrypted case failed inside FFmpeg as
+    // "Invalid data found when processing input" and sent the operator looking
+    // for a codec problem that did not exist.
+    std::string url;
+    if (auto status = io.prepare(&contexts.input, source, request.key, &url); !status) {
+        return ResultType(status.error());
+    }
+    int rc = avformat_open_input(&contexts.input, url.empty() ? nullptr : url.c_str(), nullptr,
+                                 nullptr);
     if (rc < 0) {
         return ResultType::failure(ErrorCode::MediaError,
                                    "Could not open the managed original: " + ffmpegErrorString(rc));

@@ -5,6 +5,7 @@
 #include "core/common/logging.h"
 #include "core/common/time_utils.h"
 #include "core/common/uuid.h"
+#include "core/security/crypto.h"
 #include "core/security/file_hasher.h"
 #include "core/security/user_context.h"
 #include "trace/trace_version.h"
@@ -12,11 +13,18 @@
 namespace trace {
 
 DerivedAssetService::DerivedAssetService(std::shared_ptr<Database> database, StorageLayout layout,
-                                         std::shared_ptr<AuditService> audit)
+                                         std::shared_ptr<AuditService> audit,
+                                         std::shared_ptr<WorkspaceKeys> keys)
     : database_(std::move(database)),
       repository_(std::make_shared<ProvenanceRepository>(database_)),
       layout_(std::move(layout)),
-      audit_(std::move(audit)) {}
+      audit_(std::move(audit)),
+      keys_(std::move(keys)) {}
+
+Result<CaseKeyHandle> DerivedAssetService::caseKey(const std::string& caseId) const {
+    if (keys_ == nullptr) return Result<CaseKeyHandle>::success(CaseKeyHandle());
+    return caseKeyFor(*keys_, caseId);
+}
 
 Result<DerivedAsset> DerivedAssetService::registerAsset(
     const DerivedAssetRegistration& registration) {
@@ -28,8 +36,39 @@ Result<DerivedAsset> DerivedAssetService::registerAsset(
                                    "Derived file was not written: " + registration.file.string());
     }
 
+    // Hashed and sized before anything is encrypted, because both describe the
+    // plaintext. See the header for why that is the load-bearing choice.
     auto hashed = hashFile(registration.file);
     if (!hashed) return ResultType(hashed.error());
+
+    std::int64_t plaintextSize = 0;
+    if (const auto size = std::filesystem::file_size(registration.file, ec); !ec) {
+        plaintextSize = static_cast<std::int64_t>(size);
+    }
+
+    // A thumbnail is a frame of the recording; a waveform is its sound. Storing
+    // either in the clear beside an encrypted original would make "the evidence
+    // is encrypted" false in the way that matters, so this happens before the
+    // row exists rather than as a later sweep.
+    if (keys_ != nullptr && keys_->encrypted()) {
+        if (!keys_->unlocked()) {
+            // The file the caller wrote is still plaintext on disk. Refusing
+            // here rather than registering it leaves the caller to remove it —
+            // which every caller does on failure — instead of TRACE recording a
+            // cleartext asset in a workspace an operator was told is encrypted.
+            return ResultType::failure(
+                ErrorCode::PermissionDenied,
+                "The workspace is locked, so this cannot be stored encrypted",
+                "Unlock the workspace before producing derived assets.");
+        }
+        auto key = caseKey(registration.caseId);
+        if (!key) return ResultType(key.error());
+        if (const crypto::SecretKey* secret = key.value().get(); secret != nullptr) {
+            if (auto status = crypto::encryptFileInPlace(registration.file, *secret); !status) {
+                return ResultType(status.error());
+            }
+        }
+    }
 
     const std::string now = nowIso8601Utc();
     const std::string actor = UserContext::current().actorName();
@@ -63,9 +102,7 @@ Result<DerivedAsset> DerivedAssetService::registerAsset(
     asset.storageRelPath = layout_.relativeTo(registration.file);
     asset.filename = registration.file.filename().string();
     asset.mediaType = registration.mediaType;
-    if (const auto size = std::filesystem::file_size(registration.file, ec); !ec) {
-        asset.fileSize = static_cast<std::int64_t>(size);
-    }
+    asset.fileSize = plaintextSize;
     asset.sha256 = hashed.take();
     asset.sourceStartUs = registration.sourceStartUs;
     asset.sourceEndUs = registration.sourceEndUs;
