@@ -149,7 +149,11 @@ Still open from this area:
   confirm/reject across a filter, and a review-progress indicator per run. A sweep is
   recorded as a sweep rather than as N examinations; see `docs/ANALYSIS_RUNS.md`.
 - **GPU verification** — the CUDA path is written and guarded but has never executed on a
-  GPU here. It needs a machine with an NVIDIA device, a GPU package of ONNX Runtime and a
+  GPU here. What *was* fixed without one: TRACE no longer records `CUDA:0` merely because
+  the runtime build offers the provider. It now reads the execution provider out of a
+  profiled warm-up inference and records what actually ran, or `CUDA:0 (unconfirmed)`
+  when the probe cannot tell. See `docs/PHASE1_TESTING.md`. The probe itself is written
+  and unexecuted, because this build's ONNX Runtime is CPU-only. It needs a machine with an NVIDIA device, a GPU package of ONNX Runtime and a
   measured comparison before any GPU performance claim is made.
 - **Working copies** — a proportionate transcode for awkward codecs, recorded as a
   derived asset with its parameters, so analysis runs on a known format while the

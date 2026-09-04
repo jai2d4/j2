@@ -134,9 +134,11 @@ State this plainly, because a claim about untested hardware is worth nothing:
 
 | Not exercised | Why |
 |---|---|
-| **CUDA execution provider** | this environment has no NVIDIA GPU (`nvidia-smi` finds no device) and the CPU package of ONNX Runtime is installed. The CUDA path is compiled, guarded and selected from the runtime's own provider list, but **it has never run here** |
+| **CUDA execution provider** | this environment has no NVIDIA GPU (`nvidia-smi` finds no device) and the CPU package of ONNX Runtime is installed — `GetAvailableProviders()` returns `CPUExecutionProvider` alone. The CUDA path is compiled and guarded, but **it has never run here** |
+| **The execution-provider probe** | `observedExecutionProvider()` runs one inference with profiling on and reads which provider executed the nodes. It only runs when CUDA was requested *and* the build offers it, so on this CPU-only runtime **it is never entered**. Written and unexecuted; see below for why it exists and what to check on a machine with a GPU |
 | **TensorRT** | not implemented in Phase 1 at all |
 | **GPU performance** | no GPU, so no GPU figure is quoted anywhere in this repository |
+| **A supported GPU reported as `CUDA:0`** | needs a GPU. The negative half — a GPU request on a machine that cannot serve it being recorded as `CPU`, never as CUDA — *is* tested, by `ExecutionProvider.AGpuRequestThatCannotBeServedIsRecordedAsCpuNotAsCuda` |
 | **Windows / macOS** | development and CI ran on Linux; the build is portable but was not executed elsewhere in this phase |
 | **Hour-long recordings** | the longest clip tested is 795 frames (≈ 79 s of media) |
 | **4K footage** | the largest tested is 768 × 576 |
@@ -160,3 +162,52 @@ timestamp:
 
 It reports no model digest, because there is no artefact. It is not a detector and is
 never presented as one.
+
+
+---
+
+## Recording which device ran, rather than which was asked for
+
+TRACE used to write `CUDA:0` into a run record on the strength of
+`GetAvailableProviders()` listing `CUDAExecutionProvider`. That call reports what
+the ONNX Runtime **build** was compiled with. It says nothing about whether the
+GPU in the machine is one that build has kernels for.
+
+On a GPU it does not support — a Blackwell / RTX 50-series card is the live case
+at the time of writing, since prebuilt wheels ship kernels only to sm_89/sm_90 —
+the sequence is:
+
+1. `GetAvailableProviders()` lists CUDA. True, and useless.
+2. `AppendExecutionProvider_CUDA` succeeds. It only registers the provider.
+3. The session is created without complaint.
+4. ONNX Runtime assigns every node to the CPU and returns no error.
+
+Nothing in those four steps fails, and the run record named an accelerator that
+had not executed a single node. Every detection carried `deviceInUse = "CUDA:0"`
+while the CPU did the work. For a tool whose whole claim is that its records
+describe what happened, that is the wrong kind of wrong.
+
+**What replaced it.** ONNX Runtime exposes no session-level or device-level
+provider query — `GetAvailableProviders` is all there is. The one thing that
+names the provider which executed each node is the profile, so when CUDA is
+requested TRACE now runs a single inference over a zero tensor with profiling
+enabled, reads the provider out of the profile, deletes it, and records what it
+found:
+
+| Observation | Recorded |
+|---|---|
+| CUDA executed nodes | `CUDA:0` |
+| The CPU executed them | `CPU`, with a warning naming the likely cause |
+| The probe could not tell | `CUDA:0 (unconfirmed)` |
+
+The third row matters. Not knowing and knowing it was the CPU are different
+facts, and collapsing them would reintroduce a smaller version of the original
+defect.
+
+**What to check on a machine with a GPU.** Run
+`ExecutionProvider.WhatIsReportedIsAlwaysSomethingThatCouldHaveRun` with a CUDA
+build of ONNX Runtime installed (`scripts/fetch_onnxruntime.sh --gpu`). On a
+supported card it should record `CUDA:0`; on an unsupported one it should record
+`CPU` and log the warning, rather than either failing the run or claiming the
+GPU. Until somebody does that, the probe is written and unexecuted, and this
+document says so.
