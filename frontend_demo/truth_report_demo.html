@@ -64,6 +64,10 @@
   input,select{width:100%;background:transparent;border:none;color:var(--chalk);
     font-family:'IBM Plex Mono';font-size:13px;padding:0}
   input:focus,select:focus{outline:none}
+  input::placeholder{color:var(--dim);opacity:1}
+  input[type=number]{-moz-appearance:textfield}
+  input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{
+    -webkit-appearance:none;margin:0}
   .field{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);
     border-radius:8px;padding:9px 12px;margin:10px 0;transition:border-color .15s,box-shadow .15s}
   .field:focus-within{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-glow)}
@@ -224,6 +228,79 @@
     .report-in{animation:fade .25s ease}
     @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   }
+
+  /* ===== App shell — sidebar + view router ===== */
+  .shell{display:flex;min-height:100vh}
+  .sidebar{width:230px;flex:0 0 auto;background:var(--panel);border-right:1px solid var(--line);
+    padding:20px 14px;position:sticky;top:0;height:100vh;overflow-y:auto}
+  .sidebar-brand{display:flex;align-items:center;gap:9px;padding:0 8px 18px;margin-bottom:14px;border-bottom:1px solid var(--line)}
+  .sidebar-brand-word{font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:.06em;text-transform:uppercase}
+  .sidebar-brand-word .tru{
+    background:linear-gradient(180deg,var(--chrome-1),var(--chrome-2) 55%,var(--chrome-3));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .sidebar-brand-word .grade{color:var(--blue-2)}
+  .sidebar-group-label{font-family:'Barlow Condensed';font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--dim);margin:16px 8px 6px}
+  .sidebar-group-label:first-of-type{margin-top:0}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;color:var(--dim);
+    font-size:13px;cursor:pointer;transition:background .15s,color .15s;border:1px solid transparent;
+    margin-bottom:2px;background:none;width:100%;text-align:left;font-family:'Inter'}
+  .nav-item .ic{color:var(--dim);transition:color .15s}
+  .nav-item:hover{color:var(--chalk);background:rgba(120,160,255,.06)}
+  .nav-item.active{color:var(--chalk);background:rgba(47,125,255,.1);border-color:var(--line-strong)}
+  .nav-item.active .ic{color:var(--blue-2)}
+  .nav-badge{margin-left:auto;font-family:'IBM Plex Mono';font-size:9px;color:var(--dim);
+    border:1px solid var(--line);border-radius:100px;padding:1px 6px;letter-spacing:.04em}
+  .main{flex:1;min-width:0}
+  .view{display:block}
+  .view[hidden]{display:none}
+  .vh{max-width:1180px;margin:0 auto;padding:30px 26px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+  .vh h1{font-family:'Barlow Condensed';font-weight:700;font-size:34px;letter-spacing:.01em;text-transform:uppercase;line-height:1}
+  .vh h1 .accent{color:var(--blue-2)}
+  .vh p{color:var(--dim);font-size:13px;margin-top:8px}
+  .vh-page{font-family:'IBM Plex Mono';font-size:11px;color:var(--dim);white-space:nowrap;padding-top:4px}
+  .soon{font-family:'IBM Plex Mono';font-size:10px;letter-spacing:.1em;color:var(--gold-1);
+    border:1px solid var(--gold-2);border-radius:100px;padding:4px 11px;white-space:nowrap;
+    background:rgba(201,162,39,.08);display:inline-flex;align-items:center;gap:6px}
+  .soon::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--gold-1);
+    box-shadow:0 0 6px rgba(246,226,166,.7)}
+  .vbody{max-width:1180px;margin:0 auto;padding:22px 26px 60px;display:flex;flex-direction:column;gap:16px}
+  .cards-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .cards-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+  .cards-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  @media(max-width:900px){.cards-2,.cards-3,.cards-4{grid-template-columns:1fr 1fr}}
+  @media(max-width:600px){.cards-2,.cards-3,.cards-4{grid-template-columns:1fr}}
+  .row-list{display:flex;flex-direction:column}
+  .row-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;
+    border-bottom:1px solid var(--line);font-size:13px}
+  .row-item:last-child{border-bottom:none}
+  .row-item .rl{display:flex;align-items:center;gap:9px;color:var(--chalk)}
+  .row-item .rl .ic{color:var(--blue-2)}
+  .row-item .rv{font-family:'IBM Plex Mono';font-size:12px;color:var(--dim);white-space:nowrap}
+  .ph-row .rv{opacity:.5}
+  .card-note{color:var(--dim);font-size:12px;line-height:1.6;margin-top:4px}
+  .avatar-ring{width:46px;height:46px;border-radius:50%;border:2px solid var(--blue-2);flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;color:var(--dim);
+    box-shadow:0 0 10px var(--blue-glow);background:var(--panel2)}
+  .card h3{display:flex;align-items:center;gap:7px;font-family:'Barlow Condensed';font-weight:600;font-size:13px;
+    letter-spacing:.1em;text-transform:uppercase;color:var(--chalk);margin-bottom:10px}
+  .card h3 .ic{color:var(--blue-2)}
+  .toggle-fake{width:34px;height:18px;border-radius:100px;background:rgba(47,125,255,.4);position:relative;flex:0 0 auto}
+  .toggle-fake::after{content:"";position:absolute;right:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff}
+  .toggle-fake.off{background:var(--panel2);border:1px solid var(--line)}
+  .toggle-fake.off::after{left:2px;right:auto;background:var(--dim)}
+  .search-fake{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line-strong);
+    border-radius:8px;padding:12px 14px;color:var(--dim);font-family:'IBM Plex Mono';font-size:12px}
+  .search-fake .ic{color:var(--blue-2)}
+  .school-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .school-row:last-child{border-bottom:none}
+  .school-badge{width:34px;height:34px;border-radius:8px;background:var(--panel2);border:1px solid var(--line-strong);
+    display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed';font-weight:700;
+    font-size:13px;color:var(--blue-2);flex:0 0 auto}
+  .school-name{font-size:13px;color:var(--chalk)}
+  .school-sub{font-size:10px;color:var(--dim);letter-spacing:.04em}
+  .mini-stars{display:flex;gap:2px}
+  .mini-stars .star{width:12px;height:12px}
 </style>
 </head>
 <body>
@@ -244,7 +321,57 @@
   <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6z"/></symbol>
   <symbol id="ic-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></symbol>
   <symbol id="ic-chevron" viewBox="0 0 24 24"><path d="M8 5l6 7-6 7"/><path d="M13 5l6 7-6 7"/></symbol>
+  <symbol id="ic-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></symbol>
+  <symbol id="ic-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 6l8 7 8-7"/></symbol>
+  <symbol id="ic-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="ic-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="ic-bell" viewBox="0 0 24 24"><path d="M6 10a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M9.5 20a2.5 2.5 0 0 0 5 0"/></symbol>
+  <symbol id="ic-brain" viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3v1a3 3 0 0 0-1 5.5V15a3 3 0 0 0 3 3h1"/><path d="M15 4a3 3 0 0 1 3 3v1a3 3 0 0 1 1 5.5V15a3 3 0 0 1-3 3h-1"/><path d="M9 4a3 3 0 0 1 6 0v14a3 3 0 0 1-6 0"/></symbol>
+  <symbol id="ic-chart" viewBox="0 0 24 24"><path d="M4 20V10M11 20V4M18 20v-7"/></symbol>
+  <symbol id="ic-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".7" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="ic-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.8-4.8"/></symbol>
+  <symbol id="ic-film" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v14M16 5v14M3 10h5M16 10h5M3 15h5M16 15h5"/></symbol>
+  <symbol id="ic-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></symbol>
+  <symbol id="ic-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.5M12 18.5V21M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M3 12h2.5M18.5 12H21M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></symbol>
+  <symbol id="ic-message" viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/></symbol>
+  <symbol id="ic-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+  <symbol id="ic-card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></symbol>
+  <symbol id="ic-link" viewBox="0 0 24 24"><path d="M9 15l6-6"/><path d="M8 12l-2.5 2.5a3.5 3.5 0 0 0 5 5L13 17"/><path d="M16 12l2.5-2.5a3.5 3.5 0 0 0-5-5L11 7"/></symbol>
+  <symbol id="ic-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6.5 6.5-6.5S15.5 16.4 15.5 20"/><circle cx="17.5" cy="9" r="2.6"/><path d="M15.8 13.3c2.6.4 4.7 2.7 4.7 5.5"/></symbol>
 </svg>
+<div class="shell">
+<nav class="sidebar">
+  <div class="sidebar-brand">
+    <svg class="ic" style="width:22px;height:22px;color:var(--blue-2)"><use href="#ic-shield"/></svg>
+    <span class="sidebar-brand-word"><span class="tru">Tru</span><span class="grade">Grade</span></span>
+  </div>
+  <div class="sidebar-group-label">The Tool</div>
+  <button class="nav-item active" data-view="app" onclick="showView('app')"><svg class="ic"><use href="#ic-helmet"/></svg>Create Profile</button>
+  <button class="nav-item" data-view="app" onclick="showView('app','film')"><svg class="ic"><use href="#ic-upload"/></svg>Film Upload</button>
+  <button class="nav-item" data-view="app" onclick="showView('app','report')"><svg class="ic"><use href="#ic-shield"/></svg>AI Truth Report</button>
+
+  <div class="sidebar-group-label">Account</div>
+  <button class="nav-item" data-view="login" onclick="showView('login')"><svg class="ic"><use href="#ic-lock"/></svg>Login<span class="nav-badge">soon</span></button>
+  <button class="nav-item" data-view="createaccount" onclick="showView('createaccount')"><svg class="ic"><use href="#ic-user"/></svg>Create Account<span class="nav-badge">soon</span></button>
+  <button class="nav-item" data-view="account" onclick="showView('account')"><svg class="ic"><use href="#ic-gear"/></svg>Account Settings<span class="nav-badge">soon</span></button>
+
+  <div class="sidebar-group-label">Athlete</div>
+  <button class="nav-item" data-view="athletedash" onclick="showView('athletedash')"><svg class="ic"><use href="#ic-home"/></svg>Dashboard<span class="nav-badge">soon</span></button>
+  <button class="nav-item" data-view="filmreport" onclick="showView('filmreport')"><svg class="ic"><use href="#ic-film"/></svg>AI Film Report<span class="nav-badge">soon</span></button>
+  <button class="nav-item" data-view="traits" onclick="showView('traits')"><svg class="ic"><use href="#ic-star"/></svg>Trait Breakdown<span class="nav-badge">soon</span></button>
+  <button class="nav-item" data-view="recruiting" onclick="showView('recruiting')"><svg class="ic"><use href="#ic-bell"/></svg>Recruiting Activity<span class="nav-badge">soon</span></button>
+  <button class="nav-item" data-view="offers" onclick="showView('offers')"><svg class="ic"><use href="#ic-target"/></svg>Offer Probability<span class="nav-badge">soon</span></button>
+  <button class="nav-item" data-view="publicrating" onclick="showView('publicrating')"><svg class="ic"><use href="#ic-link"/></svg>Public Rating<span class="nav-badge">soon</span></button>
+
+  <div class="sidebar-group-label">Coach</div>
+  <button class="nav-item" data-view="coachdash" onclick="showView('coachdash')"><svg class="ic"><use href="#ic-home"/></svg>Coach Dashboard<span class="nav-badge">soon</span></button>
+  <button class="nav-item" data-view="board" onclick="showView('board')"><svg class="ic"><use href="#ic-users"/></svg>Recruitment Board<span class="nav-badge">soon</span></button>
+  <button class="nav-item" data-view="playerprofile" onclick="showView('playerprofile')"><svg class="ic"><use href="#ic-user"/></svg>Player Profile<span class="nav-badge">soon</span></button>
+  <button class="nav-item" data-view="coach360" onclick="showView('coach360')"><svg class="ic"><use href="#ic-brain"/></svg>Coach 360 Report<span class="nav-badge">soon</span></button>
+  <button class="nav-item" data-view="genesis" onclick="showView('genesis')"><svg class="ic"><use href="#ic-search"/></svg>Genesis Search<span class="nav-badge">soon</span></button>
+</nav>
+<main class="main">
+<div class="view" id="view-app">
 <div class="top">
   <div class="brand">
     <img class="brand-mark" src="data:image/jpeg;base64,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" alt="TruGrade">
@@ -273,8 +400,8 @@
   <div class="card">
     <div class="photo-slot" id="photoSlot" onclick="document.getElementById('photopick').click()">
       <div class="photo-slot-icon"><svg class="ic" style="width:18px;height:18px"><use href="#ic-user"/></svg></div>
-      <div class="photo-slot-label">Upload profile photo</div>
-      <div class="photo-slot-sub">JPG, PNG — cosmetic only</div>
+      <div class="photo-slot-label">UPLOAD PROFILE PHOTO</div>
+      <div class="photo-slot-sub">JPG, PNG – cosmetic only, not stored</div>
       <img id="photoPreview" style="display:none">
     </div>
     <input id="photopick" type="file" accept="image/*" style="display:none" onchange="handlePhoto(this.files[0])">
@@ -363,7 +490,7 @@
       <div></div>
     </div>
 
-    <h2 style="margin-top:24px"><svg class="ic"><use href="#ic-play"/></svg>Film <span class="accent">Upload</span> — Module 1</h2>
+    <h2 id="film-anchor" style="margin-top:24px"><svg class="ic"><use href="#ic-play"/></svg>Film <span class="accent">Upload</span> — Module 1</h2>
     <div class="field">
       <svg class="ic"><use href="#ic-user"/></svg>
       <div class="fbody"><label>Which player? <span style="text-transform:none;letter-spacing:0">(required on multi-player footage)</span></label>
@@ -433,8 +560,349 @@
     <div class="badge"><svg class="ic"><use href="#ic-check"/></svg>Trusted Evaluation</div>
   </div>
 </div>
+</div><!-- /view-app -->
+
+<!-- ===== LOGIN ===== -->
+<div class="view" id="view-login" hidden>
+  <div class="vh"><div><h1>WELCOME <span class="accent">BACK</span></h1><p>Log in to your TruGrade account.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="card" style="max-width:420px">
+      <div class="field"><svg class="ic"><use href="#ic-mail"/></svg><div class="fbody"><label>Email</label><input type="text" placeholder="Enter your email" disabled></div></div>
+      <div class="field"><svg class="ic"><use href="#ic-lock"/></svg><div class="fbody"><label>Password</label><input type="text" placeholder="Enter your password" disabled></div><svg class="ic"><use href="#ic-eye"/></svg></div>
+      <button class="run" disabled style="opacity:.5;cursor:not-allowed">Login</button>
+      <div class="subdivider" style="text-align:center;border-top:none;padding-top:0">— or —</div>
+      <button class="chip" style="width:100%;padding:10px;text-align:center" onclick="showView('createaccount')">Create Account</button>
+      <p class="card-note" style="text-align:center;margin-top:12px">Forgot password?</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CREATE ACCOUNT ===== -->
+<div class="view" id="view-createaccount" hidden>
+  <div class="vh"><div><h1>CREATE YOUR <span class="accent">ACCOUNT</span></h1><p>Join the AI Truth Engine for football evaluation.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="cards-2">
+      <div class="card">
+        <h3><svg class="ic"><use href="#ic-users"/></svg>I Am A…</h3>
+        <div class="row-list">
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-helmet"/></svg>Athlete — track, analyze, improve.</div></div>
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-users"/></svg>Parent — support and stay informed.</div></div>
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-target"/></svg>Coach — evaluate and develop players.</div></div>
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-chart"/></svg>Trainer — monitor health, load, performance.</div></div>
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-shield"/></svg>Admin — manage teams, data, org.</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3><svg class="ic"><use href="#ic-user"/></svg>Account Details</h3>
+        <div class="field ph-row"><svg class="ic"><use href="#ic-user"/></svg><div class="fbody"><label>Full Name</label><input placeholder="—" disabled></div></div>
+        <div class="field ph-row"><svg class="ic"><use href="#ic-mail"/></svg><div class="fbody"><label>Email Address</label><input placeholder="—" disabled></div></div>
+        <div class="field ph-row"><svg class="ic"><use href="#ic-lock"/></svg><div class="fbody"><label>Password</label><input placeholder="—" disabled></div></div>
+        <div class="field ph-row"><svg class="ic"><use href="#ic-lock"/></svg><div class="fbody"><label>Confirm Password</label><input placeholder="—" disabled></div></div>
+        <button class="run" disabled style="opacity:.5;cursor:not-allowed">Continue <svg class="ic"><use href="#ic-chevron"/></svg></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ACCOUNT SETTINGS ===== -->
+<div class="view" id="view-account" hidden>
+  <div class="vh"><div><h1>USER <span class="accent">ACCOUNT</span></h1><p>Manage your profile, preferences, and account settings.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="cards-3">
+      <div class="card"><h3><svg class="ic"><use href="#ic-user"/></svg>Profile</h3>
+        <p class="card-note">Name, role, email, and phone on file.</p>
+        <button class="chip" disabled style="opacity:.5;margin-top:10px">Edit Profile</button></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-shield"/></svg>Role &amp; Permissions</h3>
+        <div class="row-list ph-row">
+          <div class="row-item"><div class="rl">View All Athletes</div><div class="rv">—</div></div>
+          <div class="row-item"><div class="rl">Manage Team</div><div class="rv">—</div></div>
+          <div class="row-item"><div class="rl">Create Reports</div><div class="rv">—</div></div>
+        </div></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-star"/></svg>Subscription Plan</h3>
+        <p class="card-note">Plan tier, renewal date, and features.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-bell"/></svg>Notification Preferences</h3>
+        <div class="row-list">
+          <div class="row-item"><div class="rl">Evaluation Complete</div><div class="toggle-fake off"></div></div>
+          <div class="row-item"><div class="rl">AI Report Ready</div><div class="toggle-fake off"></div></div>
+          <div class="row-item"><div class="rl">Team Alerts</div><div class="toggle-fake off"></div></div>
+        </div></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-link"/></svg>Connected Accounts</h3>
+        <div class="row-list ph-row">
+          <div class="row-item"><div class="rl">Hudl</div><div class="rv">Not connected</div></div>
+          <div class="row-item"><div class="rl">Google Drive</div><div class="rv">Not connected</div></div>
+          <div class="row-item"><div class="rl">Dropbox</div><div class="rv">Not connected</div></div>
+        </div></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-lock"/></svg>Security Settings</h3>
+        <p class="card-note">Password, two-factor auth, login activity.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-lock"/></svg>Data &amp; Privacy</h3>
+        <p class="card-note">Data sharing, anonymization, deletion requests.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-card"/></svg>Billing &amp; Payment</h3>
+        <p class="card-note">Payment method, invoices, billing details.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-upload"/></svg>Export &amp; Reports</h3>
+        <p class="card-note">Download your data and scheduled reports.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ATHLETE DASHBOARD ===== -->
+<div class="view" id="view-athletedash" hidden>
+  <div class="vh"><div><h1>ATHLETE <span class="accent">DASHBOARD</span></h1><p>Overview • Analyze • Elevate</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="cards-3">
+      <div class="card"><h3><svg class="ic"><use href="#ic-user"/></svg>Athlete Overview</h3>
+        <div class="avatar-ring"><svg class="ic"><use href="#ic-helmet"/></svg></div>
+        <p class="card-note">Name, position, class, school, and measurables populate here once linked to a profile.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-star"/></svg>TruStar Rating</h3>
+        <div class="stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div>
+        <p class="card-note">AI-powered overall assessment — evaluated across performance, film, and potential.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-film"/></svg>Live Video Session</h3>
+        <button class="btn-solid" disabled style="opacity:.5">Start Live Session</button>
+        <p class="card-note" style="margin-top:10px">Connect, stream, and analyze in real time.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-target"/></svg>Development Goals</h3>
+        <div class="row-list ph-row">
+          <div class="row-item"><div class="rl">Improve Breakaway Speed</div><div class="rv">—</div></div>
+          <div class="row-item"><div class="rl">Enhance Vision &amp; Patience</div><div class="rv">—</div></div>
+          <div class="row-item"><div class="rl">Increase Yards After Contact</div><div class="rv">—</div></div>
+        </div></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-upload"/></svg>Recent Film Uploads</h3>
+        <p class="card-note">Your uploaded game film will appear here.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-shield"/></svg>Recent AI Truth Reports</h3>
+        <p class="card-note">Generated reports will appear here.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== AI FILM REPORT ===== -->
+<div class="view" id="view-filmreport" hidden>
+  <div class="vh"><div><h1>AI FILM <span class="accent">REPORT</span></h1><p>Key clips, all film, and a coach-ready report summary.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="card">
+      <h3><svg class="ic"><use href="#ic-film"/></svg>Key Clips</h3>
+      <div class="cards-4">
+        <div class="stat-tile"><svg class="ic sm"><use href="#ic-play"/></svg><div class="stat-label">Route Win</div><div class="stat-val" style="opacity:.5">—</div></div>
+        <div class="stat-tile"><svg class="ic sm"><use href="#ic-play"/></svg><div class="stat-label">Missed Tackle</div><div class="stat-val" style="opacity:.5">—</div></div>
+        <div class="stat-tile"><svg class="ic sm"><use href="#ic-play"/></svg><div class="stat-label">Explosive Break</div><div class="stat-val" style="opacity:.5">—</div></div>
+        <div class="stat-tile"><svg class="ic sm"><use href="#ic-play"/></svg><div class="stat-label">Coach Note</div><div class="stat-val" style="opacity:.5">—</div></div>
+      </div>
+    </div>
+    <div class="cards-2">
+      <div class="card"><h3><svg class="ic"><use href="#ic-check"/></svg>Strengths</h3><p class="card-note">Populated from AI film analysis once game film is processed.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-x"/></svg>Weaknesses</h3><p class="card-note">Populated from AI film analysis once game film is processed.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TRAIT BREAKDOWN ===== -->
+<div class="view" id="view-traits" hidden>
+  <div class="vh"><div><h1>TRAIT <span class="accent">BREAKDOWN</span></h1><p>AI-powered evaluation of athletic and football traits.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="cards-2">
+      <div class="card">
+        <h3><svg class="ic"><use href="#ic-star"/></svg>TruStar Trait Profile</h3>
+        <div class="row-list">
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-bolt"/></svg>Speed</div><div class="mini-stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-eye"/></svg>Vision</div><div class="mini-stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-bolt"/></svg>Acceleration</div><div class="mini-stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-target"/></svg>Technique</div><div class="mini-stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-brain"/></svg>Football IQ</div><div class="mini-stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+        </div>
+      </div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-chart"/></svg>Evidence Clips</h3>
+        <p class="card-note">Every trait links to the specific film clips behind its grade — populated once film analysis has run for this athlete.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== RECRUITING ACTIVITY ===== -->
+<div class="view" id="view-recruiting" hidden>
+  <div class="vh"><div><h1>RECRUITMENT <span class="accent">ACTIVITY</span></h1><p>Live updates from coaches.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="cards-3">
+      <div class="card"><h3><svg class="ic"><use href="#ic-users"/></svg>School Activity</h3>
+        <p class="card-note">Recent coach activity — added to board, watchlist, camp invites — will appear here.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-bell"/></svg>Watchlist Alerts</h3>
+        <p class="card-note">New and updated watchlist adds from college programs.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-chart"/></svg>Real Interest Signal</h3>
+        <p class="card-note">Strength-of-interest scoring, separated from recruiting noise.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== OFFER PROBABILITY ===== -->
+<div class="view" id="view-offers" hidden>
+  <div class="vh"><div><h1>OFFER <span class="accent">PROBABILITY</span></h1><p>Trust the truth. Follow the signal.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="presets">
+      <button class="chip" disabled style="opacity:.6">All Schools</button>
+      <button class="chip" disabled style="opacity:.6">Power 4</button>
+      <button class="chip" disabled style="opacity:.6">Group of 5</button>
+      <button class="chip" disabled style="opacity:.6">FCS</button>
+      <button class="chip" disabled style="opacity:.6">JUCO</button>
+    </div>
+    <div class="card">
+      <div class="school-row"><div class="school-badge">—</div><div style="flex:1"><div class="school-name">School name</div><div class="school-sub">Conference</div></div>
+        <div class="mini-stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+      <div class="school-row"><div class="school-badge">—</div><div style="flex:1"><div class="school-name">School name</div><div class="school-sub">Conference</div></div>
+        <div class="mini-stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+      <div class="school-row"><div class="school-badge">—</div><div style="flex:1"><div class="school-name">School name</div><div class="school-sub">Conference</div></div>
+        <div class="mini-stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+      <p class="card-note" style="margin-top:12px">TruStar Offer Signal uses AI to separate real recruiting interest from noise — populated once an athlete profile has recruiting activity.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PUBLIC RATING ===== -->
+<div class="view" id="view-publicrating" hidden>
+  <div class="vh"><div><h1>PUBLIC ATHLETE <span class="accent">RATING</span></h1><p>Shareable. Verified. Recruit-ready.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="cards-2">
+      <div class="card">
+        <div class="avatar-ring" style="width:64px;height:64px"><svg class="ic" style="width:28px;height:28px"><use href="#ic-user"/></svg></div>
+        <h3 style="margin-top:12px">Athlete Profile</h3>
+        <div class="stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div>
+        <button class="btn-solid" disabled style="opacity:.5;margin-top:10px">Share Athlete Profile</button>
+      </div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-shield"/></svg>AI Truth Report Preview</h3>
+        <div class="row-list">
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-shield"/></svg>Evaluation Integrity</div></div>
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-chart"/></svg>Performance Insights</div></div>
+          <div class="row-item"><div class="rl"><svg class="ic"><use href="#ic-users"/></svg>Recruiting Transparency</div></div>
+        </div>
+        <p class="card-note">Full report available to coaches on request.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== COACH DASHBOARD ===== -->
+<div class="view" id="view-coachdash" hidden>
+  <div class="vh"><div><h1>COLLEGE COACH <span class="accent">DASHBOARD</span></h1><p>Recruit. Evaluate. Win.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="cards-4">
+      <div class="stat-tile"><svg class="ic sm"><use href="#ic-users"/></svg><div class="stat-label">Recruiting Board</div><div class="stat-val" style="opacity:.5">—</div></div>
+      <div class="stat-tile"><svg class="ic sm"><use href="#ic-star"/></svg><div class="stat-label">Watchlist</div><div class="stat-val" style="opacity:.5">—</div></div>
+      <div class="stat-tile"><svg class="ic sm"><use href="#ic-film"/></svg><div class="stat-label">Live Evaluations</div><div class="stat-val" style="opacity:.5">—</div></div>
+      <div class="stat-tile"><svg class="ic sm"><use href="#ic-shield"/></svg><div class="stat-label">AI Truth Reports</div><div class="stat-val" style="opacity:.5">—</div></div>
+    </div>
+    <div class="cards-2">
+      <div class="card"><h3><svg class="ic"><use href="#ic-users"/></svg>Recruiting Board</h3>
+        <p class="card-note">Athletes added to your board will appear here, filterable by position, class, state, and TruStar rating.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-target"/></svg>Team Needs</h3>
+        <div class="row-list ph-row">
+          <div class="row-item"><div class="rl">Quarterback</div><div class="rv">—</div></div>
+          <div class="row-item"><div class="rl">Wide Receiver</div><div class="rv">—</div></div>
+          <div class="row-item"><div class="rl">Offensive Line</div><div class="rv">—</div></div>
+        </div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== RECRUITMENT BOARD ===== -->
+<div class="view" id="view-board" hidden>
+  <div class="vh"><div><h1>COACH RECRUITMENT <span class="accent">BOARD</span></h1><p>Build. Evaluate. Develop. Recruit.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="cards-4">
+      <div class="card"><h3><svg class="ic"><use href="#ic-star"/></svg>Watchlist</h3><p class="card-note">0 athletes</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-target"/></svg>Evaluating</h3><p class="card-note">0 athletes</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-shield"/></svg>Offer Board</h3><p class="card-note">0 athletes</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-chart"/></svg>Development Goals</h3><p class="card-note">0 athletes</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PLAYER PROFILE (COACH VIEW) ===== -->
+<div class="view" id="view-playerprofile" hidden>
+  <div class="vh"><div><h1>PLAYER <span class="accent">PROFILE</span></h1><p>Coach view — verified evidence, film, and recruiting fit.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="card">
+      <div style="display:flex;gap:14px;align-items:center">
+        <div class="avatar-ring" style="width:56px;height:56px"><svg class="ic" style="width:24px;height:24px"><use href="#ic-user"/></svg></div>
+        <div><h3 style="margin:0">Athlete Name</h3><div class="stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn-solid" disabled style="opacity:.5">Add to Dashboard</button>
+          <button class="chip" disabled style="opacity:.6">Ignore Player</button>
+        </div>
+      </div>
+    </div>
+    <div class="cards-4">
+      <div class="card"><h3><svg class="ic"><use href="#ic-target"/></svg>Scheme Fit</h3><div class="mini-stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-users"/></svg>Culture Fit</h3><div class="mini-stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-shield"/></svg>Need Match</h3><div class="mini-stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-chart"/></svg>Development</h3><div class="mini-stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div></div>
+    </div>
+    <div class="cards-2">
+      <div class="card"><h3><svg class="ic"><use href="#ic-film"/></svg>Film Archive</h3><p class="card-note">Uploaded game film appears here once linked.</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-message"/></svg>Coach Notes</h3><p class="card-note">Private notes from coaching staff appear here.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== COACH 360 TRUTH REPORT ===== -->
+<div class="view" id="view-coach360" hidden>
+  <div class="vh"><div><h1>COACH 360 <span class="accent">TRUTH REPORT</span></h1><p>Complete player evaluation. Verified truth. Confident decisions.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="rating-card">
+      <div class="rating-label">TRUSTAR RATING</div>
+      <div class="stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div>
+      <p class="card-note">Verified evidence: all film + data confirmed by the AI Truth Engine, once evaluation is complete.</p>
+    </div>
+    <div class="cards-4">
+      <div class="card"><h3><svg class="ic"><use href="#ic-target"/></svg>Scheme Fit</h3><p class="card-note">—</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-check"/></svg>Strengths</h3><p class="card-note">—</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-x"/></svg>Weaknesses</h3><p class="card-note">—</p></div>
+      <div class="card"><h3><svg class="ic"><use href="#ic-chart"/></svg>AI Tracking Overlay</h3><p class="card-note">—</p></div>
+    </div>
+    <div class="card">
+      <h3><svg class="ic"><use href="#ic-target"/></svg>Coach Decision</h3>
+      <div class="presets">
+        <button class="chip" disabled style="opacity:.6">Offer — Full Scholarship</button>
+        <button class="chip" disabled style="opacity:.6">Offer — Preferred Walk-On</button>
+        <button class="chip" disabled style="opacity:.6">Invite — Official Visit</button>
+        <button class="chip" disabled style="opacity:.6">Continue Evaluation</button>
+        <button class="chip" disabled style="opacity:.6">Not a Fit</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== GENESIS SEARCH ===== -->
+<div class="view" id="view-genesis" hidden>
+  <div class="vh"><div><h1><span class="accent">GENESIS</span></h1><p>Coach search query — the AI Truth Engine for football evaluation.</p></div><span class="soon">COMING SOON</span></div>
+  <div class="vbody">
+    <div class="card">
+      <h3><svg class="ic"><use href="#ic-search"/></svg>Natural Language Search</h3>
+      <div class="search-fake"><svg class="ic"><use href="#ic-search"/></svg>e.g. "Show me South Florida nickel defenders with elite TruStar fit"</div>
+      <div class="presets" style="margin-top:14px">
+        <button class="chip" disabled style="opacity:.6">Class Year</button>
+        <button class="chip" disabled style="opacity:.6">Position</button>
+        <button class="chip" disabled style="opacity:.6">Region</button>
+        <button class="chip" disabled style="opacity:.6">Height</button>
+        <button class="chip" disabled style="opacity:.6">Weight</button>
+        <button class="chip" disabled style="opacity:.6">GPA</button>
+        <button class="chip" disabled style="opacity:.6">Verified Only</button>
+      </div>
+      <p class="card-note" style="margin-top:14px">Results will list matching verified athletes with TruStar rating and film highlights once Genesis search is live.</p>
+    </div>
+  </div>
+</div>
+
+</main>
+</div><!-- /shell -->
 
 <script>
+// ===== View router — swaps which <div class="view"> is visible and =====
+// ===== keeps the sidebar's active-state in sync.                    =====
+function showView(id, anchor){
+  document.querySelectorAll(".view").forEach(v=>v.hidden = (v.id !== "view-"+id));
+  document.querySelectorAll(".nav-item").forEach(n=>{
+    n.classList.toggle("active", n.dataset.view===id);
+  });
+  window.scrollTo({top:0, behavior:"instant"});
+  if(anchor){
+    const el=document.getElementById(anchor==="film"?"film-anchor":"report");
+    if(el) setTimeout(()=>el.scrollIntoView({behavior:"smooth", block:"start"}), 30);
+  }
+}
+
 // ===== 1:1 port of app/services/metric_sieve.py =====
 const MATRIX = {
   "QB|D1_FBS":{height:[74,78],weight:[200,240],forty:[4.60,4.90],gpa_min:3.0,sat_min:1000,act_min:18},
