@@ -57,6 +57,15 @@ The free tier spins down after 15 minutes idle and takes ~30–60s to wake back 
 
 No Render account yet? Sign up is free at [render.com](https://render.com) — that account (and clicking through the Blueprint prompts above) is the one step that has to happen on your end; nothing about it requires code changes.
 
+### Alternative: Replit
+A `.replit` file is included for **Import from GitHub → Deploy** on [replit.com](https://replit.com):
+
+1. Create a Postgres database (Replit's built-in Postgres, or any external one — e.g. [Neon](https://neon.tech)) and copy its connection string.
+2. In your Repl's **Secrets**, set `GEMINI_API_KEY` and `DATABASE_URL` (the connection string from step 1 — `postgres://user:pass@host:port/dbname` works as-is, no reformatting needed). `API_KEY` is optional, same as above.
+3. Click **Deploy** (Autoscale). The `.replit` config installs `requirements.txt`, applies the schema on boot, and starts the app on Replit's assigned port.
+
+`DATABASE_URL` and the individual `POSTGRES_*` variables both work — set whichever your host hands you, not both.
+
 ## Auth
 Leave `API_KEY` unset in `.env` for local dev — every route is open. Set it before exposing the app anywhere else: every `/api/v1/scout/*`, `/api/v1/athletes`, and `/api/v1/evaluations` route then requires a matching `X-API-Key` header. `/api/v1/health` always stays open for uptime checks.
 
