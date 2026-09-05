@@ -404,14 +404,6 @@
 
 <div class="wrap">
   <div class="card">
-    <div class="photo-slot" id="photoSlot" onclick="document.getElementById('photopick').click()">
-      <div class="photo-slot-icon"><svg class="ic" style="width:18px;height:18px"><use href="#ic-user"/></svg></div>
-      <div class="photo-slot-label">UPLOAD PROFILE PHOTO</div>
-      <div class="photo-slot-sub">JPG, PNG – cosmetic only, not stored</div>
-      <img id="photoPreview" style="display:none">
-    </div>
-    <input id="photopick" type="file" accept="image/*" style="display:none" onchange="handlePhoto(this.files[0])">
-
     <div class="field">
       <svg class="ic"><use href="#ic-user"/></svg>
       <div class="fbody"><label>Athlete Name</label><input id="athleteName" type="text" placeholder="Jordan Williams"></div>
@@ -436,11 +428,6 @@
     <div class="field">
       <svg class="ic"><use href="#ic-book"/></svg>
       <div class="fbody"><label>GPA</label><input id="gpa" type="number" step="0.01" placeholder="3.2"></div>
-    </div>
-    <div class="row3">
-      <div class="field"><svg class="ic"><use href="#ic-clock"/></svg><div class="fbody"><label>40 Yard (laser)</label><input id="forty" type="number" step="0.01" placeholder="4.45"></div></div>
-      <div class="field"><svg class="ic"><use href="#ic-bolt"/></svg><div class="fbody"><label>Vertical (in)</label><input id="vertical" type="number" step="0.5" placeholder="—"></div></div>
-      <div class="field"><svg class="ic"><use href="#ic-clock"/></svg><div class="fbody"><label>Shuttle (laser)</label><input id="shuttle" type="number" step="0.01" placeholder="4.15"></div></div>
     </div>
     <h2 id="film-anchor" style="margin-top:24px"><svg class="ic"><use href="#ic-play"/></svg>Film <span class="accent">Upload</span> — Module 1</h2>
     <div class="card-note" style="margin-bottom:12px">The AI tracks the player number and school colors entered above. It will not substitute another player.</div>
@@ -970,12 +957,11 @@ async function lookupPlayer(){
     const res=await fetch(API_BASE+"/api/v1/scout/player-lookup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({player_name:name,school:school||null})});
     const data=await res.json();
     if(!res.ok) throw new Error(data.detail||`HTTP ${res.status}`);
-    const set=(id,value)=>{if(value!==null&&value!==undefined&&value!=="")document.getElementById(id).value=value;};
+    const set=(id,value)=>{const el=document.getElementById(id);if(el&&value!==null&&value!==undefined&&value!=="")el.value=value;};
     set("athleteName",data.full_name); set("school",data.school);
     set("schoolColors",Array.isArray(data.school_colors)?data.school_colors.join(", "):data.school_colors);
     set("classYear",data.grad_year); set("stateInput",data.state); set("playerNumber",data.jersey_number);
-    set("height",data.height_in); set("weight",data.weight_lbs); set("forty",data.forty_s);
-    set("shuttle",data.shuttle_s); set("vertical",data.vertical_in); set("gpa",data.gpa);
+    set("height",data.height_in); set("weight",data.weight_lbs); set("gpa",data.gpa);
     const links=(data.sources||[]).map(s=>`<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title||"Source")}</a>`).join(" · ");
     status.innerHTML=`${escapeHtml(data.verification_note||"Lookup complete.")}${links?`<br>Sources: ${links}`:"<br>No public source was returned; no unverified fields were filled."}`;
     run();
@@ -1040,17 +1026,7 @@ async function _submitFilm(fd, uploadedLabel, safeName){
   run();
 }
 
-const num=id=>{const v=document.getElementById(id).value;return v===""?null:parseFloat(v);};
-
-// Cosmetic only — no backend field for this. Local preview via object URL.
-function handlePhoto(file){
-  if(!file) return;
-  const img=document.getElementById("photoPreview");
-  const slot=document.getElementById("photoSlot");
-  img.src=URL.createObjectURL(file);
-  img.style.display="block";
-  slot.querySelectorAll(".photo-slot-icon,.photo-slot-label,.photo-slot-sub").forEach(el=>el.style.display="none");
-}
+const num=id=>{const el=document.getElementById(id);if(!el)return null;const v=el.value;return v===""?null:parseFloat(v);};
 
 // TruStar Rating — purely presentational mapping from the real projected
 // tier onto a 5-star readout, echoing the wireframe deck's rating widget.
@@ -1068,7 +1044,7 @@ function icon(name,cls="ic"){ return `<svg class="${cls}"><use href="#ic-${name}
 
 function run(){
   const pos="DB";
-  const a={height:num("height"),weight:num("weight"),forty:num("forty"),shuttle:num("shuttle"),
+  const a={height:num("height"),weight:num("weight"),forty:null,shuttle:null,
            bench:null,squat:null,gpa:num("gpa"),sat:null,act:null};
   const r=runSieve(pos,a);
   const tierLabel=r.tier.replaceAll("_"," ");
