@@ -444,55 +444,6 @@
     </div>
     <button class="run" onclick="run()">Continue <svg class="ic"><use href="#ic-chevron"/></svg></button>
 
-    <div class="subdivider">Additional combine data — used by the sieve</div>
-    <div class="presets">
-      <button class="chip" onclick="loadPreset('fbs')">FBS-ready athlete</button>
-      <button class="chip" onclick="loadPreset('burner')">Undersized burner</button>
-      <button class="chip" onclick="loadPreset('rb')">Power athlete</button>
-    </div>
-    <div class="row2">
-      <div class="field"><svg class="ic"><use href="#ic-dumbbell"/></svg><div class="fbody"><label>Bench (lbs)</label><input id="bench" type="number" placeholder="—"></div></div>
-      <div class="field"><svg class="ic"><use href="#ic-dumbbell"/></svg><div class="fbody"><label>Squat (lbs)</label><input id="squat" type="number" placeholder="—"></div></div>
-    </div>
-    <div class="row2">
-      <div class="field"><svg class="ic"><use href="#ic-book"/></svg><div class="fbody"><label>SAT</label><input id="sat" type="number" placeholder="1050"></div></div>
-      <div class="field"><svg class="ic"><use href="#ic-book"/></svg><div class="fbody"><label>ACT</label><input id="act" type="number" placeholder="18"></div></div>
-    </div>
-
-    <h2 style="margin-top:24px"><svg class="ic"><use href="#ic-shield"/></svg>Profile &amp; <span class="accent">Makeup</span> — Module 6</h2>
-    <div class="row2">
-      <div class="field"><svg class="ic"><use href="#ic-ruler"/></svg><div class="fbody"><label>Size</label>
-        <select id="mk_size"><option value="">— not graded —</option>
-          <option value="GAME_CHANGER">Game-Changer</option><option value="ALL_CONF">All-Conf</option>
-          <option value="WIN_PLUS">Win+</option><option value="WIN">Win</option>
-          <option value="WIN_MINUS">Win-</option><option value="NGE">NGE</option></select></div></div>
-      <div class="field"><svg class="ic"><use href="#ic-bolt"/></svg><div class="fbody"><label>Athletic Ability</label>
-        <select id="mk_aa"><option value="">— not graded —</option>
-          <option value="GAME_CHANGER">Game-Changer</option><option value="ALL_CONF">All-Conf</option>
-          <option value="WIN_PLUS">Win+</option><option value="WIN">Win</option>
-          <option value="WIN_MINUS">Win-</option><option value="NGE">NGE</option></select></div></div>
-    </div>
-    <div class="row2">
-      <div class="field"><svg class="ic"><use href="#ic-book"/></svg><div class="fbody"><label>Play History</label>
-        <select id="mk_history"><option value="">— not graded —</option>
-          <option value="GAME_CHANGER">Game-Changer</option><option value="ALL_CONF">All-Conf</option>
-          <option value="WIN_PLUS">Win+</option><option value="WIN">Win</option>
-          <option value="WIN_MINUS">Win-</option><option value="NGE">NGE</option></select></div></div>
-      <div class="field"><svg class="ic"><use href="#ic-flag"/></svg><div class="fbody"><label>Play Style</label>
-        <select id="mk_style"><option value="">— not graded —</option>
-          <option value="GAME_CHANGER">Game-Changer</option><option value="ALL_CONF">All-Conf</option>
-          <option value="WIN_PLUS">Win+</option><option value="WIN">Win</option>
-          <option value="WIN_MINUS">Win-</option><option value="NGE">NGE</option></select></div></div>
-    </div>
-    <div class="row2">
-      <div class="field"><svg class="ic"><use href="#ic-shield"/></svg><div class="fbody"><label>Character</label>
-        <select id="mk_character"><option value="">— not graded —</option>
-          <option value="GAME_CHANGER">Game-Changer</option><option value="ALL_CONF">All-Conf</option>
-          <option value="WIN_PLUS">Win+</option><option value="WIN">Win</option>
-          <option value="WIN_MINUS">Win-</option><option value="NGE">NGE</option></select></div></div>
-      <div></div>
-    </div>
-
     <h2 id="film-anchor" style="margin-top:24px"><svg class="ic"><use href="#ic-play"/></svg>Film <span class="accent">Upload</span> — Module 1</h2>
     <div class="card-note" style="margin-bottom:12px">The AI tracks the player number and school colors entered above. It will not substitute another player.</div>
     <div class="drop" id="drop" tabindex="0"
@@ -1101,16 +1052,6 @@ async function _submitFilm(fd, uploadedLabel, safeName){
   run();
 }
 
-const PRESETS = {
-  fbs:{height:72,weight:190,forty:4.45,shuttle:4.15},
-  burner:{height:68,weight:165,forty:4.38,shuttle:4.10},
-  rb:{height:70,weight:200,forty:4.62,bench:250,squat:400},
-};
-function loadPreset(k){
-  const p=PRESETS[k];
-  for(const id of["height","weight","forty","shuttle","bench","squat","gpa","sat","act"]) document.getElementById(id).value=p[id]??"";
-  run();
-}
 const num=id=>{const v=document.getElementById(id).value;return v===""?null:parseFloat(v);};
 
 // Cosmetic only — no backend field for this. Local preview via object URL.
@@ -1140,7 +1081,7 @@ function icon(name,cls="ic"){ return `<svg class="${cls}"><use href="#ic-${name}
 function run(){
   const pos="DB";
   const a={height:num("height"),weight:num("weight"),forty:num("forty"),shuttle:num("shuttle"),
-           bench:num("bench"),squat:num("squat"),gpa:num("gpa"),sat:num("sat"),act:num("act")};
+           bench:null,squat:null,gpa:num("gpa"),sat:null,act:null};
   const r=runSieve(pos,a);
   const tierLabel=r.tier.replaceAll("_"," ");
   const ladder=r.walked.map(w=>`<span class="rung ${w.passed?"lit":"failed"}">${w.tier.replaceAll("_"," ")}</span>`).join("");
@@ -1175,23 +1116,6 @@ function run(){
       <div class="estat">${icon("star")}<div><div class="estat-label">Qualifying Tiers</div><div class="estat-val">${r.qualifying_tiers.length}</div></div></div>
     </div>`:"";
 
-  const mkGrades={size:document.getElementById("mk_size").value||null,
-    athletic_ability:document.getElementById("mk_aa").value||null,
-    play_history:document.getElementById("mk_history").value||null,
-    play_style:document.getElementById("mk_style").value||null,
-    character:document.getElementById("mk_character").value||null};
-  const mkOverall=averageMakeupGrade(mkGrades);
-  const mkDown=mkOverall?gradeDown(mkOverall):null;
-  const makeupHTML=mkDown?`
-    <div class="rating-card" style="padding:16px 20px">
-      <div class="rating-label">PROFILE &amp; MAKEUP — GRADED AGAINST P4 STANDARD</div>
-        <div class="ladder" style="margin:0">
-          <span class="rung lit">P4: ${RANK_LABEL[mkDown.p4]}</span>
-          <span class="rung lit">Group of 5: ${RANK_LABEL[mkDown.group_of_5]}</span>
-          <span class="rung lit">FCS: ${RANK_LABEL[mkDown.fcs]}</span>
-          <span class="rung lit">D2/D3/NAIA/JUCO: ${RANK_LABEL[mkDown.d2_d3_naia_juco]}</span>
-        </div>
-    </div>`:"";
 
   const now=new Date();
   const stamp=now.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})+
@@ -1223,7 +1147,6 @@ function run(){
     </table>
     ${r.is_game_changer?`<div class="gc"><b>${icon("flag")}Out-of-bracket flag</b><p>${r.game_changer_reason}</p></div>`:""}
     ${swHTML}
-    ${makeupHTML}
     <div class="film">
       <h2 style="margin-bottom:8px">${icon("play")}Film <span class="accent">Analysis</span> — gemini-3.5-flash
         <span class="tag">${filmState.mode==="live"?"LIVE API RESULT":filmState.mode==="error"?"GRADING FAILED":"AWAITING FILM UPLOAD"}</span></h2>
