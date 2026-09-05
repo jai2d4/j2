@@ -325,17 +325,38 @@ open again, and no confirmation dialog makes that recoverable.
 - The unlock dialog admits the right operator and refuses a wrong password, an
   unknown operator and an empty name — driven as a real widget.
 
+**Verified on both platforms:**
+
+- **Windows builds with encryption on and its encryption tests run there.**
+  This used to sit under "not verified" with the argument that SQLCipher and
+  libcrypto are in vcpkg and nothing in the code is platform-specific. That was
+  an argument, not a result, so CI now builds Windows with
+  `TRACE_WITH_ENCRYPTION=ON`.
+
+  Two assertions make the job prove something rather than merely pass.
+  `FindEncryptionBackend.cmake` degrades rather than failing when SQLCipher is
+  missing, and every encryption test opens with a skip guard on
+  `crypto::available()` — so a broken install would have produced a green run
+  that tested an unencrypted TRACE. The job therefore requires the configure
+  summary to report encryption `TRUE`, and requires the encryption tests to have
+  run rather than skipped.
+
+  The find module needed no changes: the vcpkg port installs its header at
+  `include/sqlcipher/sqlite3.h` and its import library as `sqlcipher.lib`, which
+  is what the module already searched for. What the job did find was a genuine
+  platform difference elsewhere — `ClipExportService` held the written clip open
+  while registering it, and Windows will not replace an open file where Linux
+  will. That failed exactly one test out of 319, and only in an encrypted
+  workspace, because only there does registration rewrite the file in place.
+
 **Not verified:**
 
 - **No timing analysis of any kind.** The keyring answers a wrong password and
   an unknown operator identically by construction, and both perform the same
   derivation, but no measurement has been taken to confirm the two are
   indistinguishable in practice.
-- **Encryption has only been built and run on Linux.** SQLCipher and libcrypto
-  are both available on Windows through vcpkg, and nothing in the code is
-  platform-specific beyond the random source, but Windows CI does not yet build
-  with `TRACE_WITH_ENCRYPTION=ON`. Until it does, the Windows encrypted path is
-  written and unproven, exactly as the audio sink is.
+- **No timing measurement of the container itself.** Chunk decryption is
+  bounded by the chunk size by construction, but no figure has been taken.
 - **No large-file measurement.** The largest recording put through a container
   in testing is the few-megabyte sample. Chunked random access should make a
   multi-gigabyte file behave the same way, but "should" is the accurate word.

@@ -179,9 +179,18 @@ Still open from this area:
   workspace it met a container and reported "Invalid data found when processing input" —
   the opaque codec-shaped error that `EncryptedMediaIo` exists to prevent. It now goes
   through the decrypting IO layer like every other reader.
-- **Windows encrypted builds** — SQLCipher and libcrypto are both in vcpkg and nothing
-  in the code is platform-specific beyond the random source, but CI does not yet build
-  Windows with `TRACE_WITH_ENCRYPTION=ON`, so that path is written and unproven.
+- ~~**Windows encrypted builds**~~ — built. CI builds Windows with
+  `TRACE_WITH_ENCRYPTION=ON` and requires both that the configure summary reports
+  encryption on and that the encryption tests ran rather than skipped, because a
+  degrading find module plus skip-guarded tests would otherwise produce a green run
+  that had tested nothing.
+
+  It earned its keep immediately. ONVIF discovery had never linked on Windows — no
+  `ws2_32` — which meant product code from the camera work could not build there at
+  all. `ClipExportService` held its output file open while registering it, which
+  Windows refuses and Linux allows. And two portability bugs in the test servers
+  (an `avio_alloc_context` signature that differs between libavformat 60 and 61, and
+  `windows.h`'s `min`/`max` macros) had to be fixed before anything linked.
 
 ---
 
