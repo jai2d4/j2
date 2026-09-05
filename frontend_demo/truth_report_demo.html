@@ -418,20 +418,17 @@
     </div>
     <div class="row3">
       <div class="field"><svg class="ic"><use href="#ic-helmet"/></svg>
-        <div class="fbody"><label>Position</label>
-          <select id="position">
-            <option>QB</option><option>RB</option><option>WR</option><option selected>DB</option>
-            <option>LB</option><option>DE</option><option>DL</option><option>OL</option><option>TE</option>
-          </select>
-        </div>
+        <div class="fbody"><label>Player Number to Track</label><input id="playerNumber" type="number" min="0" max="99" placeholder="12"></div>
       </div>
       <div class="field"><svg class="ic"><use href="#ic-book"/></svg><div class="fbody"><label>Class Year</label><input id="classYear" type="number" placeholder="2027"></div></div>
       <div class="field"><svg class="ic"><use href="#ic-flag"/></svg><div class="fbody"><label>State</label><input id="stateInput" type="text" maxlength="2" placeholder="TX"></div></div>
     </div>
-    <div class="field">
-      <svg class="ic"><use href="#ic-shield"/></svg>
-      <div class="fbody"><label>School</label><input id="school" type="text" placeholder="Westview High School"></div>
+    <div class="row2">
+      <div class="field"><svg class="ic"><use href="#ic-shield"/></svg><div class="fbody"><label>School</label><input id="school" type="text" placeholder="Westview High School"></div></div>
+      <div class="field"><svg class="ic"><use href="#ic-star"/></svg><div class="fbody"><label>School Colors</label><input id="schoolColors" type="text" placeholder="Red, white, black"></div></div>
     </div>
+    <button class="btn-solid" type="button" onclick="lookupPlayer()">Look Up Verified Player Data</button>
+    <div id="lookupstatus" class="card-note" style="margin:10px 0 14px"></div>
     <div class="row2">
       <div class="field"><svg class="ic"><use href="#ic-ruler"/></svg><div class="fbody"><label>Height (in)</label><input id="height" type="number" step="0.5" placeholder="72"></div></div>
       <div class="field"><svg class="ic"><use href="#ic-scale"/></svg><div class="fbody"><label>Weight (lbs)</label><input id="weight" type="number" placeholder="190"></div></div>
@@ -449,9 +446,9 @@
 
     <div class="subdivider">Additional combine data — used by the sieve</div>
     <div class="presets">
-      <button class="chip" onclick="loadPreset('fbs')">FBS-ready DB</button>
+      <button class="chip" onclick="loadPreset('fbs')">FBS-ready athlete</button>
       <button class="chip" onclick="loadPreset('burner')">Undersized burner</button>
-      <button class="chip" onclick="loadPreset('rb')">Bubble RB</button>
+      <button class="chip" onclick="loadPreset('rb')">Power athlete</button>
     </div>
     <div class="row2">
       <div class="field"><svg class="ic"><use href="#ic-dumbbell"/></svg><div class="fbody"><label>Bench (lbs)</label><input id="bench" type="number" placeholder="—"></div></div>
@@ -497,11 +494,7 @@
     </div>
 
     <h2 id="film-anchor" style="margin-top:24px"><svg class="ic"><use href="#ic-play"/></svg>Film <span class="accent">Upload</span> — Module 1</h2>
-    <div class="field">
-      <svg class="ic"><use href="#ic-user"/></svg>
-      <div class="fbody"><label>Which player? <span style="text-transform:none;letter-spacing:0">(required on multi-player footage)</span></label>
-        <input id="playerIdentifier" type="text" placeholder="e.g. white jersey #12, or green #5 on defense"></div>
-    </div>
+    <div class="card-note" style="margin-bottom:12px">The AI tracks the player number and school colors entered above. It will not substitute another player.</div>
     <div class="drop" id="drop" tabindex="0"
          ondragover="event.preventDefault();this.classList.add('over')"
          ondragleave="this.classList.remove('over')"
@@ -533,8 +526,8 @@
       <div class="hero-panel">
         <div class="hero-tracking"><span class="hero-dot"></span>AI Tracking Active</div>
         <div class="hero-stats">
-          <div><svg class="ic sm"><use href="#ic-bolt"/></svg>Motion Analysis</div>
-          <div><svg class="ic sm"><use href="#ic-shield"/></svg>Biomechanics</div>
+          <div><svg class="ic sm"><use href="#ic-bolt"/></svg>Field Speed</div>
+          <div><svg class="ic sm"><use href="#ic-shield"/></svg>Contact / Tackling</div>
           <div><svg class="ic sm"><use href="#ic-play"/></svg>Play Recognition</div>
         </div>
         <div class="hero-bars">
@@ -657,7 +650,7 @@
     <div class="cards-3">
       <div class="card"><h3><svg class="ic"><use href="#ic-user"/></svg>Athlete Overview</h3>
         <div class="avatar-ring"><svg class="ic"><use href="#ic-helmet"/></svg></div>
-        <p class="card-note">Name, position, class, school, and measurables populate here once linked to a profile.</p></div>
+        <p class="card-note">Name, player number, class, school colors, and verified measurables populate here once linked to a profile.</p></div>
       <div class="card"><h3><svg class="ic"><use href="#ic-star"/></svg>TruStar Rating</h3>
         <div class="stars"><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg><svg class="star"><use href="#ic-star"/></svg></div>
         <p class="card-note">AI-powered overall assessment — evaluated across performance, film, and potential.</p></div>
@@ -1002,20 +995,7 @@ function gradeDown(overall){
   return {overall, p4:shiftRank(overall,0), group_of_5:shiftRank(overall,1), fcs:shiftRank(overall,2), d2_d3_naia_juco:shiftRank(overall,3)};
 }
 
-// ===== Module 1 companion: Position Specifics // Critical Factors =====
-// Mirrors app/services/film_grading.py — Gemini grades every factor it can
-// see on film against the Rank scale, and only flags the extremes.
-const CRITICAL_FACTORS={
-  QB:["Accuracy","Anticipation","Pocket awareness / mobility","Reads defenses pre- and post-snap","Release quickness / delivery","Arm strength / throw off platform","Ball security","Clutch / red-zone / 3rd-down production","Toughness"],
-  RB:["Vision","Contact balance","Elusiveness / make-miss","Burst / acceleration","Ball security","Pass-catching ability","Balance / fall-forward","Durability","Toughness"],
-  WR:["Release / separation","Route-running quickness","Ball skills / contested catch","Yards after catch","Awareness vs. coverage","Contact balance","Point-of-attack blocking","Toughness"],
-  TE:["Size & length","Point-of-attack blocking","Hands / ball skills in traffic","Route flexibility","Athletic ability at the second level","Toughness"],
-  OL:["Size & length","Pass-pro quickness / kick-slide","Hand placement / punch","Ability to pull and block in space","Anchor / balance vs. bull-rush","Recognition of fronts and stunts","Toughness"],
-  DL:["Get-off / 1st step","Bend / flex","Strike / shed ability","Balance / base","Lateral quickness / change of direction","Pursuit / motor / effort","Rush power","Reactionary athletic ability","Toughness"],
-  DE:["Get-off / 1st step","Bend / flex around the edge","Heavy hands","Rush power / speed","Lateral quickness","Range / speed-to-close","Tackling in space","Coverage / drop ability","Blitz / rush ability","Reactionary athletic ability","Toughness"],
-  LB:["Instincts / football IQ","Read and react","Play speed","Burst / acceleration","Tackling in space","Coverage ability","Blitz / rush ability","Teams value","Reactionary athletic ability","Toughness"],
-  DB:["Play speed","Recovery speed / range","Man coverage (mirror / trail / press)","Zone / off-coverage awareness","Ball skills / judgment","Space athletic ability / balance","Tackling in space","Position / plant & drive","Urgency","Reactionary athletic ability","Teams value","Toughness"],
-};
+const FILM_METRICS=["Field Speed","Contact","Play Recognition","Tackling","Versatility"];
 
 // ===== Film upload pipeline (Module 1) =====
 // Uses the real backend only. When this page is served BY the FastAPI app itself
@@ -1034,7 +1014,33 @@ function pipelineHTML(steps){
 }
 
 function playerIdentifier(){
-  return document.getElementById("playerIdentifier").value.trim();
+  const number=document.getElementById("playerNumber").value.trim();
+  const colors=document.getElementById("schoolColors").value.trim();
+  const school=document.getElementById("school").value.trim();
+  const name=document.getElementById("athleteName").value.trim();
+  return [name,number?`jersey #${number}`:"",colors?`${colors} uniform colors`:"",school].filter(Boolean).join(", ");
+}
+
+async function lookupPlayer(){
+  const name=document.getElementById("athleteName").value.trim();
+  const school=document.getElementById("school").value.trim();
+  const status=document.getElementById("lookupstatus");
+  if(!name){status.textContent="Enter the player's full name first.";return;}
+  status.textContent="Searching public sources for verified player data…";
+  try{
+    const res=await fetch(API_BASE+"/api/v1/scout/player-lookup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({player_name:name,school:school||null})});
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.detail||`HTTP ${res.status}`);
+    const set=(id,value)=>{if(value!==null&&value!==undefined&&value!=="")document.getElementById(id).value=value;};
+    set("athleteName",data.full_name); set("school",data.school);
+    set("schoolColors",Array.isArray(data.school_colors)?data.school_colors.join(", "):data.school_colors);
+    set("classYear",data.grad_year); set("stateInput",data.state); set("playerNumber",data.jersey_number);
+    set("height",data.height_in); set("weight",data.weight_lbs); set("forty",data.forty_s);
+    set("shuttle",data.shuttle_s); set("vertical",data.vertical_in); set("gpa",data.gpa);
+    const links=(data.sources||[]).map(s=>`<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title||"Source")}</a>`).join(" · ");
+    status.innerHTML=`${escapeHtml(data.verification_note||"Lookup complete.")}${links?`<br>Sources: ${links}`:"<br>No public source was returned; no unverified fields were filled."}`;
+    run();
+  }catch(e){status.textContent=`Lookup failed: ${e.message}`;}
 }
 
 async function handleFile(file){
@@ -1043,7 +1049,7 @@ async function handleFile(file){
   const box=document.getElementById("filmstatus");
   if(!ok){box.innerHTML='<div class="pipeline"><div class="step err">✕ Invalid video format (.mp4 / .mov / .avi)</div></div>';return;}
   filmState={name:file.name, mode:null, analysis:null};
-  const fd=new FormData(); fd.append("file",file); fd.append("position",document.getElementById("position").value);
+  const fd=new FormData(); fd.append("file",file);
   const pid=playerIdentifier(); if(pid) fd.append("player_identifier",pid);
   await _submitFilm(fd, `${escapeHtml(file.name)} · ${(file.size/1048576).toFixed(1)} MB`, escapeHtml(file.name));
 }
@@ -1054,7 +1060,7 @@ function handleYoutubeUrl(){
   const isYoutube=/^https?:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//i.test(url);
   if(!isYoutube){box.innerHTML='<div class="pipeline"><div class="step err">✕ Not a valid YouTube URL</div></div>';return;}
   filmState={name:url, mode:null, analysis:null};
-  const fd=new FormData(); fd.append("youtube_url",url); fd.append("position",document.getElementById("position").value);
+  const fd=new FormData(); fd.append("youtube_url",url);
   const pid=playerIdentifier(); if(pid) fd.append("player_identifier",pid);
   _submitFilm(fd, escapeHtml(url), escapeHtml(url));
 }
@@ -1096,14 +1102,13 @@ async function _submitFilm(fd, uploadedLabel, safeName){
 }
 
 const PRESETS = {
-  fbs:{position:"DB",height:72,weight:190,forty:4.45,shuttle:4.15},
-  burner:{position:"DB",height:68,weight:165,forty:4.38,shuttle:4.10},
-  rb:{position:"RB",height:70,weight:200,forty:4.62,bench:250,squat:400},
+  fbs:{height:72,weight:190,forty:4.45,shuttle:4.15},
+  burner:{height:68,weight:165,forty:4.38,shuttle:4.10},
+  rb:{height:70,weight:200,forty:4.62,bench:250,squat:400},
 };
 function loadPreset(k){
   const p=PRESETS[k];
   for(const id of["height","weight","forty","shuttle","bench","squat","gpa","sat","act"]) document.getElementById(id).value=p[id]??"";
-  document.getElementById("position").value=p.position;
   run();
 }
 const num=id=>{const v=document.getElementById(id).value;return v===""?null:parseFloat(v);};
@@ -1133,7 +1138,7 @@ function starsHTML(n,total=5){
 function icon(name,cls="ic"){ return `<svg class="${cls}"><use href="#ic-${name}"/></svg>`; }
 
 function run(){
-  const pos=document.getElementById("position").value;
+  const pos="DB";
   const a={height:num("height"),weight:num("weight"),forty:num("forty"),shuttle:num("shuttle"),
            bench:num("bench"),squat:num("squat"),gpa:num("gpa"),sat:num("sat"),act:num("act")};
   const r=runSieve(pos,a);
@@ -1203,7 +1208,7 @@ function run(){
       <div class="banner">
         <div>
           <div class="tier-big" style="color:${r.hard_metrics_passed?"var(--pass)":r.is_game_changer?"var(--gold-1)":"var(--fail)"}">${tierLabel}</div>
-          <div class="tier-sub">${pos} · projected bracket · hard metrics ${r.hard_metrics_passed?"cleared":"not cleared"}</div>
+          <div class="tier-sub">${document.getElementById("playerNumber").value?`Player #${escapeHtml(document.getElementById("playerNumber").value)} · `:""}verified measurables · hard metrics ${r.hard_metrics_passed?"cleared":"not cleared"}</div>
         </div>
         ${r.is_game_changer?'<div class="stamp">Game Changer</div>':""}
       </div>

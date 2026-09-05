@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from google import genai
 from google.genai import types
+from pydantic import BaseModel, Field
 
 from typing import Optional
 
@@ -54,6 +55,68 @@ Path(settings.UPLOAD_TMP_DIR).mkdir(parents=True, exist_ok=True)
 ALLOWED_EXTS = (".mp4", ".mov", ".avi")
 YOUTUBE_HOSTS = ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be")
 FILM_JOBS: dict[str, dict] = {}
+
+
+class PlayerLookupRequest(BaseModel):
+    player_name: str = Field(..., min_length=2, max_length=128)
+    school: Optional[str] = Field(None, max_length=128)
+
+
+def _grounding_sources(response) -> list[dict]:
+    """Return only URLs Gemini actually used for Google Search grounding."""
+    found: list[dict] = []
+    seen: set[str] = set()
+    try:
+        chunks = response.candidates[0].grounding_metadata.grounding_chunks or []
+        for chunk in chunks:
+            web = getattr(chunk, "web", None)
+            uri = getattr(web, "uri", None)
+            if uri and uri not in seen:
+                seen.add(uri)
+                found.append({"title": getattr(web, "title", None) or uri, "url": uri})
+    except (AttributeError, IndexError, TypeError):
+        pass
+    return found
+
+
+@app.post("/api/v1/scout/player-lookup", dependencies=[Depends(require_api_key)])
+async def player_lookup(request: PlayerLookupRequest):
+    """Look up public, sourced player facts without filling unknowns by inference."""
+    school_hint = f' at or associated with "{request.school}"' if request.school else ""
+    prompt = f"""
+    Search the public web for the football player named "{request.player_name}"{school_hint}.
+    Resolve identity carefully. Do not combine people with similar names. Return JSON only.
+    Use null for every value that is not explicitly published by a source you found; never
+    estimate, infer, or calculate a measurement or GPA. School colors must be official or
+    clearly published. Numeric height_in must be inches and weight_lbs must be pounds.
+    Return exactly these keys: full_name, school, school_colors (array of color names),
+    grad_year, state, jersey_number, height_in, weight_lbs, forty_s, shuttle_s,
+    vertical_in, gpa, and verification_note. The note must say which facts were found and
+    which were not publicly verified.
+    """
+    try:
+        response = await asyncio.to_thread(
+            ai_client.models.generate_content,
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                response_mime_type="application/json",
+            ),
+        )
+        raw = (response.text or "").strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        profile = json.loads(raw)
+        if not isinstance(profile, dict):
+            raise ValueError("lookup returned an invalid profile")
+        profile["sources"] = _grounding_sources(response)
+        return profile
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=f"Player lookup returned invalid data: {exc}")
+    except Exception as exc:
+        logger.exception("player lookup failed")
+        raise HTTPException(status_code=502, detail=f"Player lookup failed: {exc}")
 
 
 def _is_youtube_url(url: str) -> bool:
