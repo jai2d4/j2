@@ -57,6 +57,11 @@ async def register(
     app.version = payload.version or app.version
     app.public_url = payload.public_url or app.public_url
     app.control_path = payload.control_url or app.control_path
+    # An app that registered itself would otherwise have no address to be driven
+    # at — push would work and every control action would fail. Its own public
+    # URL is the best answer it gave us.
+    if not app.base_url and app.public_url:
+        app.base_url = app.public_url.rstrip("/")
     app.capabilities = json.dumps(payload.capabilities)
     app.status = "ok"
     app.status_detail = ""

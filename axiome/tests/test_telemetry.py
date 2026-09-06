@@ -76,3 +76,56 @@ async def test_driving_an_app_that_is_down_says_so_plainly(client, connected):
                           json={"enabled": True}, headers=ADMIN)
     assert r.status_code == 502
     assert "refused" in r.json()["detail"]
+
+
+async def test_a_failed_check_does_not_claim_the_app_was_seen(client, connected):
+    """A red dot next to 'seen 1s ago' is worse than no timestamp at all."""
+    added = await connected("Livephoria", "http://127.0.0.1:9")
+    await client.post("/api/apps/heartbeat", json={"slug": "livephoria", "metrics": {"users": 5}},
+                      headers=await auth(added))
+    seen_after_beat = (await client.get("/api/admin/apps/livephoria", headers=ADMIN)).json()["last_seen_at"]
+    assert seen_after_beat is not None
+
+    # Nothing is listening on that port, so this poll fails.
+    app = (await client.post("/api/admin/apps/livephoria/refresh", headers=ADMIN)).json()
+    assert app["status"] == "unreachable"
+    assert app["last_seen_at"] == seen_after_beat  # untouched
+    assert app["metrics"] == {"users": 5}  # last known numbers, not wiped
+
+
+async def test_a_self_registered_app_can_still_be_driven(client, connected):
+    """Registering with only a public URL used to leave nothing to call back on."""
+    added = await connected("Livephoria", "")
+    r = await client.post(
+        "/api/apps/register",
+        json={"slug": "livephoria", "name": "Livephoria",
+              "public_url": "http://127.0.0.1:9", "control_url": "/api/v1/control"},
+        headers=await auth(added),
+    )
+    assert r.status_code == 200
+    app = (await client.get("/api/admin/apps/livephoria", headers=ADMIN)).json()
+    assert app["base_url"] == "http://127.0.0.1:9"
+
+    # Which means a control action now reaches for it rather than silently doing nothing.
+    r = await client.post("/api/admin/apps/livephoria/maintenance",
+                          json={"enabled": True}, headers=ADMIN)
+    assert r.status_code == 502
+
+
+async def test_an_apps_identity_does_not_become_its_kind(client, connected):
+    added = await connected()
+    await client.post("/api/apps/register",
+                      json={"slug": "livephoria", "kind": "creator-platform"},
+                      headers=await auth(added))
+    app = (await client.get("/api/admin/apps/livephoria", headers=ADMIN)).json()
+    assert app["kind"] == "creator-platform"
+
+
+async def test_the_health_path_is_configurable(client):
+    r = await client.post(
+        "/api/admin/apps",
+        json={"name": "Odd App", "base_url": "http://127.0.0.1:9", "health_path": "/healthz"},
+        headers=ADMIN,
+    )
+    assert r.status_code == 201
+    assert r.json()["app"]["health_path"] == "/healthz"

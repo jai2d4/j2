@@ -48,12 +48,17 @@ async def connected(client):
     that is the normal case for an app that is not up yet, and it must still save."""
 
     async def _add(name: str = "Livephoria", base_url: str = "http://127.0.0.1:9") -> dict:
-        r = await client.post(
-            "/api/admin/apps",
-            json={"name": name, "base_url": base_url, "control_key": "ck"},
-            headers=ADMIN,
-        )
+        if not base_url:
+            # An app added with no address yet — it must supply one when it registers.
+            base_url = ""
+        payload = {"name": name, "control_key": "ck",
+                   "base_url": base_url or "http://127.0.0.1:9"}
+        r = await client.post("/api/admin/apps", json=payload, headers=ADMIN)
         assert r.status_code == 201, r.text
-        return r.json()
+        result = r.json()
+        if not base_url:
+            await client.patch(f"/api/admin/apps/{result['app']['slug']}",
+                               json={"base_url": ""}, headers=ADMIN)
+        return result
 
     return _add

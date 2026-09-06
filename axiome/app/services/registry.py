@@ -45,6 +45,7 @@ def app_out(app: App) -> AppOut:
         base_url=app.base_url,
         public_url=app.public_url,
         control_path=app.control_path,
+        health_path=app.health_path,
         capabilities=loads(app.capabilities, []),
         status=app.status,
         status_detail=app.status_detail,
@@ -121,13 +122,25 @@ async def record_sample(
 
 
 def mark_seen(app: App, *, status: str, metrics: dict, latency_ms: float | None = None) -> None:
+    """Record contact with an app.
+
+    Only call this when the app actually answered. `last_seen_at` is how an
+    operator judges whether to trust the numbers on screen — bumping it for a
+    failed check would put "seen 1s ago" next to a red dot, which is worse than
+    showing nothing.
+    """
     app.status = status
     app.last_metrics = json.dumps(metrics)[:20_000]
     app.last_seen_at = datetime.now(timezone.utc)
     app.last_latency_ms = latency_ms
 
 
-async def probe(base_url: str, control_path: str, control_key: str) -> dict:
+async def probe(
+    base_url: str,
+    control_path: str,
+    control_key: str,
+    health_path: str = "/api/v1/health",
+) -> dict:
     """Ask an app who it is. Used by 'connect' and by the poller.
 
     Distinguishes three failures on purpose: nothing answered, something answered
@@ -136,7 +149,7 @@ async def probe(base_url: str, control_path: str, control_key: str) -> dict:
     settings = get_settings()
     timeout = settings.poll_timeout_seconds
 
-    health = await client.call(base_url, "/api/v1/health", timeout=timeout)
+    health = await client.call(base_url, health_path or "/api/v1/health", timeout=timeout)
     status = await client.call(
         base_url, control_path.rstrip("/") + "/status", key=control_key, timeout=timeout
     )
@@ -163,7 +176,7 @@ async def refresh(session: AsyncSession, app: App) -> dict:
         app.status_detail = "No base URL — this app only pushes"
         return {}
 
-    result = await probe(app.base_url, app.control_path, app.control_key)
+    result = await probe(app.base_url, app.control_path, app.control_key, app.health_path)
 
     if not result["reachable"]:
         app.status = "unreachable"
@@ -182,12 +195,17 @@ async def refresh(session: AsyncSession, app: App) -> dict:
         app.version = (result["status"] or {}).get("version", app.version)
 
     metrics = result["metrics"] if isinstance(result["metrics"], dict) else {}
-    mark_seen(
-        app,
-        status=app.status,
-        metrics=metrics or loads(app.last_metrics, {}),
-        latency_ms=result["latency_ms"],
-    )
+    if result["reachable"]:
+        # Something answered — even a rejected key proves the app is alive.
+        mark_seen(
+            app,
+            status=app.status,
+            metrics=metrics or loads(app.last_metrics, {}),
+            latency_ms=result["latency_ms"],
+        )
+    # Nothing answered: leave last_seen_at where it was, so the board keeps
+    # showing how long it has actually been gone.
+
     await record_sample(
         session, app, status=app.status, metrics=metrics, latency_ms=result["latency_ms"], source="poll"
     )

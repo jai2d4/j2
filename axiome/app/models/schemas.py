@@ -62,6 +62,7 @@ class AppOut(BaseModel):
     base_url: str
     public_url: str
     control_path: str
+    health_path: str
     capabilities: list[str]
     status: str
     status_detail: str
@@ -84,6 +85,7 @@ class AppCreate(BaseModel):
     control_key: str = Field(default="", max_length=200)
     slug: str | None = Field(default=None, pattern=SLUG_RE)
     control_path: str = "/api/v1/control"
+    health_path: str = "/api/v1/health"
 
     @field_validator("base_url")
     @classmethod
@@ -99,6 +101,7 @@ class AppUpdate(BaseModel):
     base_url: str | None = None
     control_key: str | None = None
     control_path: str | None = None
+    health_path: str | None = None
     enabled: bool | None = None
 
 
@@ -119,6 +122,7 @@ class ProbeRequest(BaseModel):
     base_url: str
     control_key: str = ""
     control_path: str = "/api/v1/control"
+    health_path: str = "/api/v1/health"
 
 
 class MaintenanceRequest(BaseModel):

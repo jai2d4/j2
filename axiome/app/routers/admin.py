@@ -64,7 +64,7 @@ async def list_apps(session: SessionDep) -> list[AppOut]:
 async def probe(payload: ProbeRequest) -> dict:
     """Dry run before saving, so 'Add app' can tell you what's wrong first."""
     return await registry.probe(
-        payload.base_url.rstrip("/"), payload.control_path, payload.control_key
+        payload.base_url.rstrip("/"), payload.control_path, payload.control_key, payload.health_path
     )
 
 
@@ -80,7 +80,9 @@ async def connect_app(payload: AppCreate, session: SessionDep) -> ConnectResult:
     if await registry.get_by_slug(session, slug) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, f"'{slug}' is already connected")
 
-    found = await registry.probe(payload.base_url, payload.control_path, payload.control_key)
+    found = await registry.probe(
+        payload.base_url, payload.control_path, payload.control_key, payload.health_path
+    )
     reported = found.get("status") or {}
 
     token = new_app_key()
@@ -89,10 +91,13 @@ async def connect_app(payload: AppCreate, session: SessionDep) -> ConnectResult:
         name=payload.name,
         base_url=payload.base_url,
         control_path=payload.control_path,
+        health_path=payload.health_path,
         control_key=payload.control_key,
         app_key_hash=hash_key(token),
         app_key_hint=hint(token),
-        kind=reported.get("app", "app") if reported else "app",
+        # `kind` is a category and comes from the app's own registration;
+        # /status reports an identity, which is not the same thing.
+        kind="app",
         version=reported.get("version", "") if reported else "",
         maintenance=bool(reported.get("maintenance")) if reported else False,
     )

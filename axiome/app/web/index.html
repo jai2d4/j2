@@ -152,6 +152,7 @@ function addAppDialog(){
     <label>Control key <span style="font-weight:400">— the app's AXIOME_CONTROL_KEY</span></label>
     <input name="control_key" placeholder="leave blank if the app has none">
     <label>Control path</label><input name="control_path" value="/api/v1/control">
+    <label>Health path</label><input name="health_path" value="/api/v1/health">
     <div class="row" style="margin-top:16px">
       <button class="btn ghost sm" data-act="test">Test connection</button>
       <div class="spacer"></div>
@@ -166,6 +167,7 @@ function addAppDialog(){
     base_url: card.querySelector('[name="base_url"]').value.trim().replace(/\/+$/, ""),
     control_key: card.querySelector('[name="control_key"]').value.trim(),
     control_path: card.querySelector('[name="control_path"]').value.trim() || "/api/v1/control",
+    health_path: card.querySelector('[name="health_path"]').value.trim() || "/api/v1/health",
   });
   const slot = card.querySelector('[data-slot="result"]');
 
@@ -174,8 +176,7 @@ function addAppDialog(){
     if (!v.base_url) return toast("Enter a base URL first", true);
     slot.innerHTML = `<div class="banner">Testing…</div>`;
     try{
-      const p = await api("/probe", {method:"POST", body:{
-        base_url:v.base_url, control_key:v.control_key, control_path:v.control_path}});
+      const p = await api("/probe", {method:"POST", body:v});
       if (!p.reachable)
         slot.innerHTML = `<div class="banner bad"><b>Nothing answered.</b><br>${esc(p.error||"")}
           <br><span class="muted">Is it running, and is the URL reachable from this machine?</span></div>`;

@@ -27,6 +27,8 @@ class App(Base):
     # Where Axiome reaches the app, and the path its control surface lives under.
     base_url: Mapped[str] = mapped_column(String(400), default="")
     control_path: Mapped[str] = mapped_column(String(200), default="/api/v1/control")
+    # Not every app puts health in the same place; the probe needs to be told.
+    health_path: Mapped[str] = mapped_column(String(200), default="/api/v1/health")
     public_url: Mapped[str] = mapped_column(String(400), default="")
 
     # Credential Axiome presents to the app (X-Axiome-Key). Stored as given,
