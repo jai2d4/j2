@@ -1,0 +1,54 @@
+{
+  "position": "SAFETY",
+  "version": "1.0",
+  "traits": {
+    "instincts": {
+      "weight": 1,
+      "enabled": true
+    },
+    "read_react": {
+      "weight": 1,
+      "enabled": true
+    },
+    "play_speed": {
+      "weight": 1,
+      "enabled": true
+    },
+    "range": {
+      "weight": 1,
+      "enabled": true
+    },
+    "coverage": {
+      "weight": 1,
+      "enabled": true
+    },
+    "ball_skills": {
+      "weight": 1,
+      "enabled": true
+    },
+    "tackling": {
+      "weight": 1,
+      "enabled": true
+    },
+    "man_coverage": {
+      "weight": 1,
+      "enabled": true
+    },
+    "zone_coverage": {
+      "weight": 1,
+      "enabled": true
+    },
+    "leverage_angles": {
+      "weight": 1,
+      "enabled": true
+    },
+    "team_value": {
+      "weight": 1,
+      "enabled": true
+    },
+    "toughness": {
+      "weight": 1,
+      "enabled": true
+    }
+  }
+}

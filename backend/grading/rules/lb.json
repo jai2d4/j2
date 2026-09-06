@@ -1,0 +1,54 @@
+{
+  "position": "LB",
+  "version": "1.0",
+  "traits": {
+    "instincts": {
+      "weight": 1,
+      "enabled": true
+    },
+    "read_react": {
+      "weight": 1,
+      "enabled": true
+    },
+    "play_speed": {
+      "weight": 1,
+      "enabled": true
+    },
+    "contact_balance": {
+      "weight": 1,
+      "enabled": true
+    },
+    "range": {
+      "weight": 1,
+      "enabled": true
+    },
+    "coverage_drop": {
+      "weight": 1,
+      "enabled": true
+    },
+    "strike_shed": {
+      "weight": 1,
+      "enabled": true
+    },
+    "acceleration_burst": {
+      "weight": 1,
+      "enabled": true
+    },
+    "leverage_angles": {
+      "weight": 1,
+      "enabled": true
+    },
+    "tackling_space": {
+      "weight": 1,
+      "enabled": true
+    },
+    "reactionary_athleticism": {
+      "weight": 1,
+      "enabled": true
+    },
+    "toughness": {
+      "weight": 1,
+      "enabled": true
+    }
+  }
+}

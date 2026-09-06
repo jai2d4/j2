@@ -1,0 +1,58 @@
+{
+  "position": "RB",
+  "version": "1.0",
+  "traits": {
+    "vision": {
+      "weight": 1,
+      "enabled": true
+    },
+    "instincts": {
+      "weight": 1,
+      "enabled": true
+    },
+    "acceleration": {
+      "weight": 1,
+      "enabled": true
+    },
+    "quickness": {
+      "weight": 1,
+      "enabled": true
+    },
+    "COD": {
+      "weight": 1,
+      "enabled": true
+    },
+    "foot_quickness": {
+      "weight": 1,
+      "enabled": true
+    },
+    "elusive": {
+      "weight": 1,
+      "enabled": true
+    },
+    "contact_balance": {
+      "weight": 1,
+      "enabled": true
+    },
+    "hands": {
+      "weight": 1,
+      "enabled": true
+    },
+    "pass_protection": {
+      "weight": 1,
+      "enabled": true
+    },
+    "inside_outside_run": {
+      "weight": 1,
+      "enabled": true
+    },
+    "team_value": {
+      "weight": 1,
+      "enabled": true
+    },
+    "toughness": {
+      "weight": 1,
+      "enabled": true
+    }
+  }
+}

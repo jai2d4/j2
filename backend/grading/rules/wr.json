@@ -1,0 +1,54 @@
+{
+  "position": "WR",
+  "version": "1.0",
+  "traits": {
+    "size_length": {
+      "weight": 1,
+      "enabled": true
+    },
+    "start_stop": {
+      "weight": 1,
+      "enabled": true
+    },
+    "separation": {
+      "weight": 1,
+      "enabled": true
+    },
+    "speed": {
+      "weight": 1,
+      "enabled": true
+    },
+    "hands": {
+      "weight": 1,
+      "enabled": true
+    },
+    "quickness": {
+      "weight": 1,
+      "enabled": true
+    },
+    "durability": {
+      "weight": 1,
+      "enabled": true
+    },
+    "RAC": {
+      "weight": 1,
+      "enabled": true
+    },
+    "contested_catch": {
+      "weight": 1,
+      "enabled": true
+    },
+    "blocking": {
+      "weight": 1,
+      "enabled": true
+    },
+    "team_value": {
+      "weight": 1,
+      "enabled": true
+    },
+    "toughness": {
+      "weight": 1,
+      "enabled": true
+    }
+  }
+}

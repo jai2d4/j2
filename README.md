@@ -9,6 +9,14 @@ entrypoint without changing the current interface or API behavior. The
 existing FastAPI implementation remains under `app/` during the phased
 migration. No Phase 2 grading-engine changes are included yet.
 
+Phase 2 adds the official deterministic film-grading core under
+`backend/grading/`: validated event/evidence models, editable JSON rules for
+all 13 TruGrade positions, unknown-safe aggregation, confidence kept separate
+from grade, and verified-only prospect profile inputs. The current UI and
+production API remain unchanged. The audit found no React `src/lib/engine.ts`
+or fantasy scoring implementation in this repository, so nothing was moved or
+fabricated; a recovery note is retained under `backend/legacy/`.
+
 On Windows, run `setup_trugrade.bat` once and then `run_trugrade.bat`.
 
 ## Structure

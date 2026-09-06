@@ -1,0 +1,62 @@
+{
+  "position": "CB",
+  "version": "1.0",
+  "traits": {
+    "foot_speed": {
+      "weight": 1,
+      "enabled": true
+    },
+    "burst_acceleration": {
+      "weight": 1,
+      "enabled": true
+    },
+    "play_speed": {
+      "weight": 1,
+      "enabled": true
+    },
+    "coverage": {
+      "weight": 1,
+      "enabled": true
+    },
+    "space_balance": {
+      "weight": 1,
+      "enabled": true
+    },
+    "ball_skills": {
+      "weight": 1,
+      "enabled": true
+    },
+    "instincts_judgment": {
+      "weight": 1,
+      "enabled": true
+    },
+    "man_coverage": {
+      "weight": 1,
+      "enabled": true
+    },
+    "zone_coverage": {
+      "weight": 1,
+      "enabled": true
+    },
+    "press": {
+      "weight": 1,
+      "enabled": true
+    },
+    "tackling_space": {
+      "weight": 1,
+      "enabled": true
+    },
+    "team_value": {
+      "weight": 1,
+      "enabled": true
+    },
+    "reactionary_athleticism": {
+      "weight": 1,
+      "enabled": true
+    },
+    "toughness": {
+      "weight": 1,
+      "enabled": true
+    }
+  }
+}

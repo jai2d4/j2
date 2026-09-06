@@ -1,0 +1,54 @@
+{
+  "position": "Y",
+  "version": "1.0",
+  "traits": {
+    "size_length": {
+      "weight": 1,
+      "enabled": true
+    },
+    "size_adjust": {
+      "weight": 1,
+      "enabled": true
+    },
+    "quickness": {
+      "weight": 1,
+      "enabled": true
+    },
+    "release": {
+      "weight": 1,
+      "enabled": true
+    },
+    "hands": {
+      "weight": 1,
+      "enabled": true
+    },
+    "blocking": {
+      "weight": 1,
+      "enabled": true
+    },
+    "ball_skills": {
+      "weight": 1,
+      "enabled": true
+    },
+    "RAC": {
+      "weight": 1,
+      "enabled": true
+    },
+    "body_control": {
+      "weight": 1,
+      "enabled": true
+    },
+    "flexibility": {
+      "weight": 1,
+      "enabled": true
+    },
+    "awareness": {
+      "weight": 1,
+      "enabled": true
+    },
+    "toughness": {
+      "weight": 1,
+      "enabled": true
+    }
+  }
+}
