@@ -1,0 +1,1021 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Livephoria — Where fans get closer</title>
+<style>
+  :root{
+    --bg:#0a0a0f; --surface:#141420; --surface-2:#1c1c2b; --line:#26263a;
+    --text:#f2f2f7; --muted:#9a9ab0; --accent:#7c5cff; --accent-2:#ff4d8d;
+    --live:#ff3b5c; --ok:#2fd48b; --gold:#ffc857;
+    --radius:16px; --shell:520px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--text); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  input,textarea,select{
+    font:inherit;width:100%;padding:11px 13px;border-radius:12px;
+    background:var(--surface-2);border:1px solid var(--line);color:var(--text);
+  }
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  label{display:block;font-size:12px;color:var(--muted);margin:12px 0 5px;font-weight:600;letter-spacing:.02em}
+  a{color:var(--accent);text-decoration:none}
+
+  #shell{max-width:var(--shell);margin:0 auto;min-height:100%;display:flex;flex-direction:column;
+    background:var(--bg);box-shadow:0 0 0 1px var(--line)}
+  header{
+    position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;
+    padding:14px 16px;background:rgba(10,10,15,.88);backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--line)
+  }
+  .brand{font-weight:800;letter-spacing:-.02em;font-size:19px;
+    background:linear-gradient(92deg,var(--accent),var(--accent-2));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .spacer{flex:1}
+  .chip{
+    padding:7px 12px;border-radius:999px;background:var(--surface-2);
+    border:1px solid var(--line);font-size:13px;font-weight:600;white-space:nowrap
+  }
+  .chip.on{background:linear-gradient(92deg,var(--accent),var(--accent-2));border-color:transparent}
+  main{flex:1;padding:16px 16px 108px}
+  h2{font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:22px 0 12px}
+  h2:first-child{margin-top:4px}
+
+  nav{
+    position:fixed;bottom:0;left:0;right:0;z-index:30;
+    max-width:var(--shell);margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr);
+    align-items:end;padding:8px 6px calc(8px + env(safe-area-inset-bottom));
+    background:rgba(14,14,22,.94);backdrop-filter:blur(16px);border-top:1px solid var(--line)
+  }
+  nav button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;
+    font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--muted)}
+  nav button .ico{font-size:19px;line-height:1}
+  nav button[aria-current="true"]{color:var(--text)}
+  nav .create{
+    width:50px;height:50px;margin:0 auto;border-radius:16px;font-size:24px;color:#fff;
+    background:linear-gradient(140deg,var(--accent),var(--accent-2));
+    box-shadow:0 6px 20px rgba(124,92,255,.42);display:grid;place-items:center
+  }
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:14px}
+  .pad{padding:14px}
+  .row{display:flex;align-items:center;gap:10px}
+  .av{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-size:19px;
+    background:var(--surface-2);border:1px solid var(--line);flex:none;overflow:hidden}
+  .av img{width:100%;height:100%;object-fit:cover}
+  .name{font-weight:700}
+  .sub{color:var(--muted);font-size:13px}
+  .btn{
+    padding:11px 16px;border-radius:12px;font-weight:700;font-size:14px;text-align:center;
+    background:linear-gradient(92deg,var(--accent),var(--accent-2));color:#fff;display:block;width:100%
+  }
+  .btn.ghost{background:var(--surface-2);border:1px solid var(--line);color:var(--text)}
+  .btn.slim{width:auto;padding:8px 14px;font-size:13px}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  .rail{display:flex;gap:11px;overflow-x:auto;padding-bottom:6px;margin:0 -16px;padding-inline:16px;
+    scrollbar-width:none}
+  .rail::-webkit-scrollbar{display:none}
+  .livecard{flex:none;width:152px;border-radius:14px;overflow:hidden;background:var(--surface);
+    border:1px solid var(--line);text-align:left}
+  .thumb{height:96px;background:linear-gradient(140deg,#2a2140,#3d2340);position:relative;display:grid;place-items:center;font-size:30px}
+  .badge{position:absolute;top:8px;left:8px;background:var(--live);color:#fff;font-size:10px;
+    font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:6px}
+  .badge.grey{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+  .watching{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.65);font-size:10px;
+    padding:3px 6px;border-radius:6px;color:#fff}
+
+  .media{aspect-ratio:16/10;background:linear-gradient(140deg,#221c33,#33203a);display:grid;place-items:center;
+    position:relative;font-size:38px}
+  .locked-media{position:absolute;inset:0;display:grid;place-items:center;gap:8px;align-content:center;
+    background:rgba(8,8,14,.72);backdrop-filter:blur(11px);text-align:center;padding:20px}
+  .lock-note{font-size:13px;color:var(--muted)}
+  .tag{font-size:11px;font-weight:800;letter-spacing:.06em;padding:3px 8px;border-radius:6px;
+    background:var(--surface-2);border:1px solid var(--line);color:var(--muted)}
+  .tag.vip{background:rgba(255,200,87,.13);border-color:rgba(255,200,87,.35);color:var(--gold)}
+  .tag.ppv{background:rgba(255,77,141,.14);border-color:rgba(255,77,141,.4);color:#ff88b0}
+
+  .banner{height:104px;background:linear-gradient(120deg,var(--accent),var(--accent-2))}
+  .stat{text-align:center;padding:12px 4px}
+  .stat b{display:block;font-size:17px}
+  .stat span{font-size:11px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
+  .tier{border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--surface-2)}
+  .tier.vip{border-color:rgba(255,200,87,.4)}
+  .perk{font-size:13px;color:var(--muted);padding-left:18px;position:relative;margin-top:5px}
+  .perk::before{content:"✓";position:absolute;left:0;color:var(--ok)}
+
+  .bubble{max-width:78%;padding:10px 13px;border-radius:16px;background:var(--surface-2);
+    margin-bottom:8px;font-size:14px}
+  .bubble.me{margin-left:auto;background:linear-gradient(92deg,var(--accent),var(--accent-2));color:#fff}
+  .empty{text-align:center;color:var(--muted);padding:44px 20px;font-size:14px}
+  .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:60;max-width:360px;
+    background:var(--surface-2);border:1px solid var(--line);padding:11px 16px;border-radius:12px;
+    font-size:14px;box-shadow:0 12px 32px rgba(0,0,0,.5)}
+  .toast.bad{border-color:#5b2233;background:#2a1620}
+  .money{font-variant-numeric:tabular-nums}
+  .bar{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin-top:6px}
+  .bar i{display:block;height:100%;background:linear-gradient(92deg,var(--accent),var(--accent-2))}
+  .note{font-size:12px;color:var(--muted);line-height:1.45}
+  .split{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+  .split:last-child{border-bottom:0}
+</style>
+</head>
+<body>
+<div id="shell">
+  <header id="topbar"></header>
+  <main id="view"><div class="empty">Loading…</div></main>
+  <nav id="nav"></nav>
+</div>
+<script>
+const API = "/api/v1";
+const state = {
+  token: localStorage.getItem("lp_token") || null,
+  me: null, tab: "home", route: {name:"home"}, cache:{},
+};
+
+/* ---------------------------------------------------------------- helpers */
+const $ = (html) => { const t=document.createElement("template"); t.innerHTML=html.trim(); return t.content.firstChild; };
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money = (c) => "$" + (c/100).toFixed(2).replace(/\.00$/,"");
+const ago = (iso) => {
+  const s = Math.max(1,(Date.now() - new Date(iso).getTime())/1000);
+  if (s<60) return "just now";
+  if (s<3600) return Math.floor(s/60)+"m ago";
+  if (s<86400) return Math.floor(s/3600)+"h ago";
+  return Math.floor(s/86400)+"d ago";
+};
+const KIND_ICON = {video:"🎬", photo:"📸", audio:"🎧", text:"✍️"};
+
+function toast(message, bad=false){
+  document.querySelectorAll(".toast").forEach(t=>t.remove());
+  const el = $(`<div class="toast ${bad?"bad":""}">${esc(message)}</div>`);
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 3200);
+}
+
+async function api(path, {method="GET", body, quiet=false}={}){
+  const headers = {};
+  if (body) headers["Content-Type"]="application/json";
+  if (state.token) headers["Authorization"]="Bearer "+state.token;
+  const res = await fetch(API+path, {method, headers, body: body?JSON.stringify(body):undefined});
+  if (res.status === 204) return null;
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok){
+    const detail = typeof data.detail === "string" ? data.detail
+      : Array.isArray(data.detail) ? (data.detail[0]?.msg ?? "That didn't work")
+      : "That didn't work";
+    if (res.status === 401 && state.token){ signOut(); }
+    if (!quiet) toast(detail, true);
+    throw new Error(detail);
+  }
+  return data;
+}
+
+function go(name, params={}){ state.route = {name, ...params}; if(["home","discover","live","inbox","profile"].includes(name)) state.tab=name; render(); }
+function signOut(){ state.token=null; state.me=null; localStorage.removeItem("lp_token"); go("auth"); }
+function setSession(payload){
+  state.token = payload.access_token; state.me = payload.user;
+  localStorage.setItem("lp_token", state.token);
+  go("home");
+}
+
+/* ---------------------------------------------------------------- chrome */
+function renderTopbar(){
+  const bar = document.getElementById("topbar");
+  const r = state.route;
+  const back = ["creator","thread","create","wallet","earnings","settings"].includes(r.name);
+  bar.innerHTML = "";
+  if (back){
+    bar.appendChild($(`<button class="chip" aria-label="Back">‹ Back</button>`)).onclick = () => go(state.tab);
+    bar.appendChild($(`<div class="spacer"></div>`));
+  } else {
+    bar.appendChild($(`<div class="brand">Livephoria</div>`));
+    bar.appendChild($(`<div class="spacer"></div>`));
+  }
+  if (state.me){
+    const wallet = $(`<button class="chip money">💰 ${money(state.me.wallet_balance_cents)}</button>`);
+    wallet.onclick = () => go("wallet");
+    bar.appendChild(wallet);
+  }
+}
+
+function renderNav(){
+  const nav = document.getElementById("nav");
+  if (!state.me){ nav.innerHTML=""; return; }
+  // HOME | DISCOVER | ＋ | LIVE | INBOX | PROFILE — the create button sits mid-bar.
+  const items = [["home","⌂","HOME"],["discover","◎","DISCOVER"],["create","+",""],
+                 ["live","◉","LIVE"],["inbox","✉","INBOX"],["profile","☺","PROFILE"]];
+  nav.innerHTML = "";
+  for (const [key, icon, label] of items){
+    if (key === "create"){
+      const b = $(`<button aria-label="Create"><span class="create">+</span></button>`);
+      b.onclick = () => go("create");
+      nav.appendChild(b);
+      continue;
+    }
+    const b = $(`<button aria-current="${state.tab===key}"><span class="ico">${icon}</span>${label}</button>`);
+    b.onclick = () => go(key);
+    nav.appendChild(b);
+  }
+}
+
+/* ---------------------------------------------------------------- pieces */
+function avatar(author){
+  const img = author.avatar_url ? `<img src="${esc(author.avatar_url)}" alt="">` : esc(author.avatar_emoji || "🙂");
+  return `<div class="av">${img}</div>`;
+}
+
+function postCard(post){
+  const a = post.author;
+  const tag = post.visibility === "ppv" ? `<span class="tag ppv">${money(post.price_cents)}</span>`
+    : post.visibility === "subscribers" ? `<span class="tag">MEMBERS</span>` : "";
+  const card = $(`<article class="card">
+    <div class="pad row">
+      ${avatar(a)}
+      <div style="min-width:0">
+        <div class="name">${esc(a.display_name)} ${a.is_verified?"✔️":""}</div>
+        <div class="sub">@${esc(a.handle)} · ${ago(post.created_at)}</div>
+      </div>
+      <div class="spacer"></div>${tag}
+    </div>
+    ${post.title ? `<div class="pad" style="padding-top:0"><strong>${esc(post.title)}</strong></div>`:""}
+    <div class="media">
+      ${post.preview_url ? `<img src="${esc(post.preview_url)}" alt="" style="width:100%;height:100%;object-fit:cover">`
+        : (KIND_ICON[post.kind] || "📸")}
+      ${post.locked ? `<div class="locked-media">
+          <div style="font-size:26px">🔒</div>
+          <div class="lock-note">${esc(post.unlock_label || "Locked")}</div>
+          <button class="btn slim" data-act="unlock">${post.visibility==="ppv"?"Unlock":"See tiers"}</button>
+        </div>`:""}
+    </div>
+    ${!post.locked && post.body ? `<div class="pad">${esc(post.body)}</div>`:""}
+    <div class="pad row" style="gap:16px">
+      <button class="sub" data-act="like">${post.viewer_has_liked?"❤️":"🤍"} ${post.like_count}</button>
+      <button class="sub" data-act="comments">💬 ${post.comment_count}</button>
+      ${post.unlock_count?`<span class="sub">🔓 ${post.unlock_count}</span>`:""}
+      <div class="spacer"></div>
+      <button class="sub" data-act="profile">@${esc(a.handle)}</button>
+    </div>
+  </article>`);
+
+  card.querySelector('[data-act="profile"]').onclick = () => go("creator", {handle:a.handle});
+  card.querySelector('[data-act="like"]').onclick = async (e) => {
+    e.currentTarget.disabled = true;
+    await api(`/posts/${post.id}/like`, {method: post.viewer_has_liked ? "DELETE":"POST"});
+    post.viewer_has_liked = !post.viewer_has_liked;
+    post.like_count += post.viewer_has_liked ? 1 : -1;
+    render();
+  };
+  card.querySelector('[data-act="comments"]').onclick = () => openComments(post);
+  const unlock = card.querySelector('[data-act="unlock"]');
+  if (unlock) unlock.onclick = () => post.visibility === "ppv" ? unlockPost(post) : go("creator",{handle:a.handle});
+  return card;
+}
+
+async function unlockPost(post){
+  try{
+    const r = await api(`/posts/${post.id}/unlock`, {method:"POST"});
+    state.me.wallet_balance_cents = r.wallet_balance_cents;
+    toast(r.detail);
+    render();
+  }catch(e){ if(String(e.message).includes("short")) go("wallet"); }
+}
+
+async function openComments(post){
+  const list = await api(`/posts/${post.id}/comments`).catch(()=>[]);
+  const body = list.map(c=>`<div class="row" style="align-items:flex-start;margin-bottom:10px">
+      <div class="av">${esc(c.user_avatar_emoji)}</div>
+      <div><div class="name" style="font-size:14px">${esc(c.user_display_name)}</div>
+      <div class="sub" style="color:var(--text)">${esc(c.body)}</div></div>
+    </div>`).join("") || `<div class="empty">No comments yet.</div>`;
+  const view = document.getElementById("view");
+  view.innerHTML = "";
+  view.appendChild($(`<h2>Comments</h2>`));
+  view.appendChild($(`<div class="card pad">${body}</div>`));
+  const form = $(`<form class="card pad"><label>Add a comment</label>
+    <input name="body" maxlength="1000" placeholder="Say something" required>
+    <button class="btn" style="margin-top:10px">Post comment</button></form>`);
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    try{
+      await api(`/posts/${post.id}/comments`, {method:"POST", body:{body:form.body.value}});
+      post.comment_count++; openComments(post);
+    }catch(_){}
+  };
+  view.appendChild(form);
+  const back = $(`<button class="btn ghost">Back to feed</button>`);
+  back.onclick = () => render();
+  view.appendChild(back);
+}
+
+function liveCard(ev){
+  const live = ev.status === "live";
+  const card = $(`<button class="livecard">
+    <div class="thumb">${ev.cover_url?`<img src="${esc(ev.cover_url)}" alt="" style="width:100%;height:100%;object-fit:cover">`:"🎥"}
+      <span class="badge ${live?"":"grey"}">${live?"● LIVE":"SOON"}</span>
+      ${live?`<span class="watching">${ev.viewer_count} watching</span>`:""}
+    </div>
+    <div style="padding:10px">
+      <div class="name" style="font-size:13px">${esc(ev.creator.display_name)}</div>
+      <div class="sub" style="font-size:12px">${esc(ev.title)}</div>
+      ${ev.access==="ticket"?`<div class="tag ppv" style="margin-top:6px;display:inline-block">${money(ev.ticket_price_cents)}</div>`
+        : ev.access==="subscribers"?`<div class="tag" style="margin-top:6px;display:inline-block">MEMBERS</div>`:""}
+    </div>
+  </button>`);
+  card.onclick = () => openLive(ev);
+  return card;
+}
+
+async function openLive(ev){
+  const fresh = await api(`/live/${ev.id}`);
+  const view = document.getElementById("view");
+  view.innerHTML = "";
+  view.appendChild($(`<h2>${fresh.status==="live"?"Live now":"Upcoming"}</h2>`));
+  const card = $(`<div class="card">
+    <div class="media">${fresh.can_watch?"▶️":"🔒"}
+      ${!fresh.can_watch?`<div class="locked-media"><div style="font-size:26px">🔒</div>
+        <div class="lock-note">${esc(fresh.lock_reason||"Locked")}</div></div>`:""}</div>
+    <div class="pad">
+      <div class="name">${esc(fresh.title)}</div>
+      <div class="sub">${esc(fresh.creator.display_name)} · @${esc(fresh.creator.handle)}</div>
+      ${fresh.description?`<p class="note" style="margin-top:8px">${esc(fresh.description)}</p>`:""}
+      ${fresh.can_watch && !fresh.playback_url ?
+        `<p class="note" style="margin-top:10px">You're in. No stream is attached yet — this build has no
+         video provider wired up, so <code>playback_url</code> is empty.</p>`:""}
+      ${fresh.can_watch && fresh.playback_url ? `<p class="note" style="margin-top:10px">${esc(fresh.playback_url)}</p>`:""}
+    </div>
+  </div>`);
+  view.appendChild(card);
+
+  if (!fresh.can_watch && fresh.access === "ticket"){
+    const buy = $(`<button class="btn">Get a ticket — ${money(fresh.ticket_price_cents)}</button>`);
+    buy.onclick = async () => {
+      try{
+        const r = await api(`/live/${fresh.id}/ticket`, {method:"POST"});
+        state.me.wallet_balance_cents = r.wallet_balance_cents;
+        toast(r.detail); openLive(fresh);
+      }catch(e){ if(String(e.message).includes("short")) go("wallet"); }
+    };
+    view.appendChild(buy);
+  }
+  if (!fresh.can_watch && fresh.access === "subscribers"){
+    const b = $(`<button class="btn">See membership tiers</button>`);
+    b.onclick = () => go("creator", {handle: fresh.creator.handle});
+    view.appendChild(b);
+  }
+  const back = $(`<button class="btn ghost" style="margin-top:10px">Back</button>`);
+  back.onclick = () => render();
+  view.appendChild(back);
+}
+
+/* ---------------------------------------------------------------- screens */
+async function viewAuth(view){
+  view.innerHTML = `
+    <div style="text-align:center;padding:26px 0 10px">
+      <div class="brand" style="font-size:34px">Livephoria</div>
+      <p class="sub">Where fans get closer.</p>
+    </div>`;
+  const form = $(`<form class="card pad">
+    <div class="row" style="gap:8px;margin-bottom:6px">
+      <button type="button" class="chip on" data-mode="signin">Sign in</button>
+      <button type="button" class="chip" data-mode="signup">Create account</button>
+    </div>
+    <div data-only="signup" hidden>
+      <label>Display name</label><input name="display_name" maxlength="80" placeholder="Your name">
+      <label>Avatar emoji</label><input name="avatar_emoji" maxlength="8" value="🙂">
+    </div>
+    <label>Email</label><input name="email" type="email" required placeholder="you@example.com">
+    <label>Password</label><input name="password" type="password" required minlength="8" placeholder="At least 8 characters">
+    <button class="btn" style="margin-top:14px">Sign in</button>
+  </form>`);
+  let mode = "signin";
+  form.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => {
+    mode = b.dataset.mode;
+    form.querySelectorAll("[data-mode]").forEach(x => x.classList.toggle("on", x===b));
+    form.querySelector('[data-only="signup"]').hidden = mode !== "signup";
+    form.querySelector(".btn").textContent = mode === "signup" ? "Create account" : "Sign in";
+  });
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const payload = {email: form.email.value, password: form.password.value};
+    try{
+      if (mode === "signup"){
+        payload.display_name = form.display_name.value || "New fan";
+        payload.avatar_emoji = form.avatar_emoji.value || "🙂";
+        setSession(await api("/auth/register", {method:"POST", body:payload}));
+      } else {
+        setSession(await api("/auth/login", {method:"POST", body:payload}));
+      }
+    }catch(_){}
+  };
+  view.appendChild(form);
+
+  const stats = await api("/discover/stats", {quiet:true}).catch(()=>null);
+  if (stats) view.appendChild($(`<p class="note" style="text-align:center">
+    ${stats.creators} creators · ${stats.posts} posts · ${stats.live_now} live right now</p>`));
+}
+
+async function viewHome(view){
+  view.innerHTML = "";
+  const [lives, feed] = await Promise.all([api("/live?status=live"), api("/feed")]);
+
+  if (lives.length){
+    view.appendChild($(`<h2>Live now</h2>`));
+    const rail = $(`<div class="rail"></div>`);
+    lives.forEach(ev => rail.appendChild(liveCard(ev)));
+    view.appendChild(rail);
+  }
+  view.appendChild($(`<h2>Your feed</h2>`));
+  if (!feed.length){
+    view.appendChild($(`<div class="empty">Nothing here yet.<br>Find someone to follow in Discover.</div>`));
+    const b = $(`<button class="btn">Open Discover</button>`); b.onclick=()=>go("discover");
+    view.appendChild(b);
+    return;
+  }
+  feed.forEach(p => view.appendChild(postCard(p)));
+}
+
+async function viewDiscover(view){
+  view.innerHTML = "";
+  const search = $(`<form class="row" style="gap:8px;margin-bottom:14px">
+    <input name="q" placeholder="Search creators" value="${esc(state.route.q||"")}">
+    <button class="btn slim">Go</button></form>`);
+  search.onsubmit = (e) => { e.preventDefault(); go("discover", {q: search.q.value, sort: state.route.sort}); };
+  view.appendChild(search);
+
+  const sorts = [["trending","Trending"],["subscribers","Most subscribed"],["new","New"]];
+  const chips = $(`<div class="rail" style="margin-bottom:6px"></div>`);
+  for (const [key,label] of sorts){
+    const c = $(`<button class="chip ${ (state.route.sort||"trending")===key ? "on":""}">${label}</button>`);
+    c.onclick = () => go("discover", {q: state.route.q, sort:key});
+    chips.appendChild(c);
+  }
+  view.appendChild(chips);
+
+  const params = new URLSearchParams();
+  if (state.route.q) params.set("q", state.route.q);
+  params.set("sort", state.route.sort || "trending");
+  const creators = await api("/discover?"+params);
+
+  view.appendChild($(`<h2>${state.route.q?"Results":"Creators"}</h2>`));
+  if (!creators.length){ view.appendChild($(`<div class="empty">No creators match that.</div>`)); return; }
+  creators.forEach(c => {
+    const cheapest = c.tiers.length ? Math.min(...c.tiers.map(t=>t.price_cents)) : null;
+    const card = $(`<button class="card pad row" style="width:100%;text-align:left">
+      ${avatar({avatar_url:c.avatar_url, avatar_emoji:c.avatar_emoji})}
+      <div style="min-width:0;flex:1">
+        <div class="name">${esc(c.display_name)} ${c.is_verified?"✔️":""} ${c.is_live?'<span class="badge" style="position:static">● LIVE</span>':""}</div>
+        <div class="sub">@${esc(c.handle)} · ${c.subscriber_count} subscribers</div>
+        ${c.tagline?`<div class="sub">${esc(c.tagline)}</div>`:""}
+      </div>
+      ${cheapest!==null?`<span class="tag">${money(cheapest)}/mo</span>`:""}
+    </button>`);
+    card.onclick = () => go("creator", {handle:c.handle});
+    view.appendChild(card);
+  });
+}
+
+async function viewLive(view){
+  view.innerHTML = "";
+  const [now, soon] = await Promise.all([api("/live?status=live"), api("/live?status=scheduled")]);
+  view.appendChild($(`<h2>Live now</h2>`));
+  if (now.length){
+    const rail = $(`<div class="rail"></div>`); now.forEach(e=>rail.appendChild(liveCard(e)));
+    view.appendChild(rail);
+  } else view.appendChild($(`<div class="empty">Nobody is live right now.</div>`));
+
+  view.appendChild($(`<h2>Coming up</h2>`));
+  if (soon.length){
+    const rail = $(`<div class="rail"></div>`); soon.forEach(e=>rail.appendChild(liveCard(e)));
+    view.appendChild(rail);
+  } else view.appendChild($(`<div class="empty">No scheduled events.</div>`));
+}
+
+async function viewCreator(view){
+  const handle = state.route.handle;
+  view.innerHTML = "";
+  const [c, posts, products] = await Promise.all([
+    api(`/creators/${handle}`), api(`/creators/${handle}/posts`), api(`/creators/${handle}/products`)
+  ]);
+  const mine = state.me && state.me.handle === c.handle;
+
+  const head = $(`<div class="card">
+    <div class="banner" style="${c.banner_url?`background-image:url('${esc(c.banner_url)}');background-size:cover`:`background:linear-gradient(120deg,${esc(c.accent_color)},var(--accent-2))`}"></div>
+    <div class="pad">
+      <div class="row" style="margin-top:-40px">
+        <div class="av" style="width:66px;height:66px;font-size:30px;border-width:3px">${c.avatar_url?`<img src="${esc(c.avatar_url)}" alt="">`:esc(c.avatar_emoji)}</div>
+        <div class="spacer"></div>
+        ${c.is_live?'<span class="badge" style="position:static">● LIVE</span>':""}
+      </div>
+      <div class="name" style="font-size:20px;margin-top:8px">${esc(c.display_name)} ${c.is_verified?"✔️":""}</div>
+      <div class="sub">@${esc(c.handle)}</div>
+      ${c.tagline?`<p style="margin:8px 0 0">${esc(c.tagline)}</p>`:""}
+      ${c.bio?`<p class="note" style="margin:6px 0 0">${esc(c.bio)}</p>`:""}
+      <div class="grid2" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
+        <div class="stat"><b>${c.subscriber_count}</b><span>Subs</span></div>
+        <div class="stat"><b>${c.follower_count}</b><span>Followers</span></div>
+        <div class="stat"><b>${c.post_count}</b><span>Posts</span></div>
+      </div>
+    </div>
+  </div>`);
+  view.appendChild(head);
+
+  if (!mine && state.me){
+    const actions = $(`<div class="grid2" style="margin-bottom:14px"></div>`);
+    const follow = $(`<button class="btn ghost">${c.viewer_is_following?"Following":"Follow"}</button>`);
+    follow.onclick = async () => {
+      await api(`/creators/${handle}/follow`, {method: c.viewer_is_following ? "DELETE":"POST"});
+      go("creator", {handle});
+    };
+    const msg = $(`<button class="btn ghost">Message</button>`);
+    msg.onclick = () => sendFirstMessage(handle);
+    actions.append(follow, msg);
+    view.appendChild(actions);
+
+    if (c.tips_enabled){
+      const tip = $(`<button class="btn" style="margin-bottom:14px">Send a tip</button>`);
+      tip.onclick = () => tipFlow(c);
+      view.appendChild(tip);
+    }
+  }
+
+  if (c.viewer_subscription){
+    view.appendChild($(`<div class="card pad">
+      <div class="row"><span class="tag vip">${esc(c.viewer_subscription.tier_name)}</span>
+      <div class="spacer"></div><span class="sub">Renews ${new Date(c.viewer_subscription.current_period_end).toLocaleDateString()}</span></div>
+    </div>`));
+  }
+
+  if (c.tiers.length && !mine){
+    view.appendChild($(`<h2>Membership</h2>`));
+    c.tiers.forEach(t => {
+      const owned = c.viewer_subscription && c.viewer_subscription.tier_id === t.id;
+      const box = $(`<div class="tier ${t.is_vip?"vip":""}">
+        <div class="row"><b>${esc(t.name)}</b>${t.is_vip?'<span class="tag vip">VIP</span>':""}
+          <div class="spacer"></div><b class="money">${money(t.price_cents)}<span class="sub">/mo</span></b></div>
+        ${t.description?`<p class="note" style="margin:6px 0 0">${esc(t.description)}</p>`:""}
+        ${t.perks.map(p=>`<div class="perk">${esc(p)}</div>`).join("")}
+        <button class="btn" style="margin-top:12px" ${owned?"disabled":""}>${owned?"Your tier":"Subscribe"}</button>
+      </div>`);
+      if (!owned) box.querySelector("button").onclick = async () => {
+        try{
+          await api(`/creators/${handle}/subscribe`, {method:"POST", body:{tier_id:t.id}});
+          state.me = await api("/auth/me");
+          toast(`Subscribed to @${handle}`);
+          go("creator", {handle});
+        }catch(e){ if(String(e.message).includes("short")) go("wallet"); }
+      };
+      view.appendChild(box);
+    });
+  }
+
+  if (products.length){
+    view.appendChild($(`<h2>Shop</h2>`));
+    products.forEach(p => {
+      const card = $(`<div class="card pad row">
+        <div class="av" style="border-radius:10px">${p.kind==="digital"?"💾":"👕"}</div>
+        <div style="flex:1;min-width:0">
+          <div class="name">${esc(p.name)}</div>
+          <div class="sub">${esc(p.description||(p.kind==="digital"?"Digital download":"Merch"))}</div>
+          ${p.inventory!==null?`<div class="sub">${p.sold_out?"Sold out":p.inventory+" left"}</div>`:""}
+        </div>
+        <button class="btn slim" ${p.sold_out?"disabled":""}>${money(p.price_cents)}</button>
+      </div>`);
+      if (!p.sold_out) card.querySelector("button").onclick = () => buyFlow(p);
+      view.appendChild(card);
+    });
+  }
+
+  view.appendChild($(`<h2>Posts</h2>`));
+  if (!posts.length) view.appendChild($(`<div class="empty">No posts yet.</div>`));
+  posts.forEach(p => view.appendChild(postCard(p)));
+}
+
+function prompt_(title, fields, onSubmit){
+  const view = document.getElementById("view");
+  view.innerHTML = "";
+  view.appendChild($(`<h2>${esc(title)}</h2>`));
+  const form = $(`<form class="card pad"></form>`);
+  fields.forEach(f => {
+    form.appendChild($(`<label>${esc(f.label)}</label>`));
+    form.appendChild($(f.html));
+  });
+  form.appendChild($(`<button class="btn" style="margin-top:14px">${esc(fields.submit||"Confirm")}</button>`));
+  form.onsubmit = async (e) => { e.preventDefault(); await onSubmit(form); };
+  view.appendChild(form);
+  const back = $(`<button class="btn ghost">Cancel</button>`);
+  back.onclick = () => render();
+  view.appendChild(back);
+}
+
+function tipFlow(c){
+  prompt_(`Tip @${c.handle}`, [
+    {label:`Amount (minimum ${money(c.min_tip_cents)})`, html:`<input name="amount" type="number" min="${c.min_tip_cents/100}" step="0.01" value="${(c.min_tip_cents/100).toFixed(2)}" required>`},
+    {label:"Note (optional)", html:`<input name="note" maxlength="200" placeholder="Say something">`},
+  ], async (form) => {
+    try{
+      const r = await api(`/creators/${c.handle}/tip`, {method:"POST",
+        body:{amount_cents: Math.round(parseFloat(form.amount.value)*100), note: form.note.value}});
+      state.me.wallet_balance_cents = r.wallet_balance_cents;
+      toast(r.detail); go("creator", {handle:c.handle});
+    }catch(e){ if(String(e.message).includes("short")) go("wallet"); }
+  });
+}
+
+function buyFlow(p){
+  const fields = [];
+  if (p.kind === "merch"){
+    fields.push({label:"Quantity", html:`<input name="quantity" type="number" min="1" max="20" value="1">`});
+    fields.push({label:"Shipping address", html:`<textarea name="shipping" rows="3" required placeholder="Street, city, postcode"></textarea>`});
+  }
+  prompt_(`Buy ${p.name} — ${money(p.price_cents)}`, fields, async (form) => {
+    const body = {};
+    if (p.kind === "merch"){ body.quantity = Number(form.quantity.value)||1; body.shipping_address = form.shipping.value; }
+    try{
+      const order = await api(`/products/${p.id}/buy`, {method:"POST", body});
+      state.me = await api("/auth/me");
+      toast(order.kind==="digital" ? "Bought — find it in Profile › Orders" : "Order placed");
+      go("creator", {handle:p.creator_handle});
+    }catch(e){ if(String(e.message).includes("short")) go("wallet"); }
+  });
+}
+
+function sendFirstMessage(handle){
+  prompt_(`Message @${handle}`, [
+    {label:"Your message", html:`<textarea name="body" rows="4" maxlength="4000" required></textarea>`},
+  ], async (form) => {
+    try{
+      const m = await api(`/creators/${handle}/messages`, {method:"POST", body:{body:form.body.value}});
+      go("thread", {id:m.thread_id, title:"@"+handle});
+    }catch(_){}
+  });
+}
+
+async function viewInbox(view){
+  view.innerHTML = "";
+  const threads = await api("/inbox");
+  view.appendChild($(`<h2>Inbox</h2>`));
+  if (!threads.length){ view.appendChild($(`<div class="empty">No conversations yet.</div>`)); return; }
+  threads.forEach(t => {
+    const row = $(`<button class="card pad row" style="width:100%;text-align:left">
+      <div class="av">${esc(t.avatar_emoji)}</div>
+      <div style="flex:1;min-width:0">
+        <div class="name">${esc(t.display_name)}</div>
+        <div class="sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.last_message||"—")}</div>
+      </div>
+      ${t.unread_count?`<span class="tag ppv">${t.unread_count}</span>`:""}
+    </button>`);
+    row.onclick = () => go("thread", {id:t.id, title:t.display_name});
+    view.appendChild(row);
+  });
+}
+
+async function viewThread(view){
+  view.innerHTML = "";
+  const messages = await api(`/threads/${state.route.id}`);
+  view.appendChild($(`<h2>${esc(state.route.title||"Conversation")}</h2>`));
+  const box = $(`<div class="card pad"></div>`);
+  if (!messages.length) box.appendChild($(`<div class="empty">Say hello.</div>`));
+  messages.forEach(m => box.appendChild($(`<div class="bubble ${m.from_me?"me":""}">${esc(m.body)}</div>`)));
+  view.appendChild(box);
+
+  const form = $(`<form class="row" style="gap:8px">
+    <input name="body" placeholder="Message" maxlength="4000" required>
+    <button class="btn slim">Send</button></form>`);
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    await api(`/threads/${state.route.id}/messages`, {method:"POST", body:{body:form.body.value}});
+    render();
+  };
+  view.appendChild(form);
+}
+
+async function viewWallet(view){
+  view.innerHTML = "";
+  const w = await api("/me/wallet");
+  state.me.wallet_balance_cents = w.wallet_balance_cents;
+  view.appendChild($(`<h2>Wallet</h2>`));
+  view.appendChild($(`<div class="card pad">
+    <div class="sub">Spendable balance</div>
+    <div class="money" style="font-size:32px;font-weight:800">${money(w.wallet_balance_cents)}</div>
+    <p class="note" style="margin-top:10px">Top-ups are simulated in this build — no card is charged and no
+    real money moves. Wiring a payment provider replaces one class in <code>app/services/payments.py</code>.</p>
+  </div>`));
+
+  const amounts = [500, 1000, 2500, 5000];
+  const grid = $(`<div class="grid2"></div>`);
+  amounts.forEach(a => {
+    const b = $(`<button class="btn ghost">Add ${money(a)}</button>`);
+    b.onclick = async () => {
+      const r = await api("/me/wallet/topup", {method:"POST", body:{amount_cents:a}});
+      state.me.wallet_balance_cents = r.wallet_balance_cents;
+      toast(`Added ${money(a)}`); go("wallet");
+    };
+    grid.appendChild(b);
+  });
+  view.appendChild(grid);
+
+  const orders = await api("/me/orders");
+  view.appendChild($(`<h2>Orders</h2>`));
+  if (!orders.length) view.appendChild($(`<div class="empty">Nothing bought yet.</div>`));
+  orders.forEach(o => {
+    const row = $(`<div class="card pad row">
+      <div class="av" style="border-radius:10px">${o.kind==="digital"?"💾":"👕"}</div>
+      <div style="flex:1"><div class="name">${esc(o.product_name)}</div>
+        <div class="sub">@${esc(o.creator_handle)} · ${esc(o.status.replace("_"," "))} · ${money(o.amount_cents)}</div></div>
+      ${o.download_url?`<button class="btn slim">Get</button>`:""}
+    </div>`);
+    if (o.download_url) row.querySelector("button").onclick = async () => {
+      const d = await api(`/orders/${o.id}/download`);
+      toast(d.url ? "Download: "+d.url : "No file attached");
+    };
+    view.appendChild(row);
+  });
+
+  const subs = await api("/me/subscriptions");
+  view.appendChild($(`<h2>Memberships</h2>`));
+  if (!subs.length) view.appendChild($(`<div class="empty">No memberships yet.</div>`));
+  subs.forEach(s => {
+    const row = $(`<div class="card pad">
+      <div class="row"><div><div class="name">@${esc(s.creator_handle)}</div>
+        <div class="sub">${esc(s.tier_name)} · ${money(s.price_cents)}/mo</div></div>
+        <div class="spacer"></div>
+        <span class="tag">${s.auto_renew?"Renews":"Ends"} ${new Date(s.current_period_end).toLocaleDateString()}</span></div>
+      ${s.auto_renew?`<button class="btn ghost" style="margin-top:10px">Cancel renewal</button>`:""}
+    </div>`);
+    const cancel = row.querySelector("button");
+    if (cancel) cancel.onclick = async () => {
+      await api(`/me/subscriptions/${s.id}`, {method:"DELETE"});
+      toast("Renewal cancelled — access runs to the end of the period");
+      go("wallet");
+    };
+    view.appendChild(row);
+  });
+}
+
+async function viewEarnings(view){
+  view.innerHTML = "";
+  const e = await api("/me/earnings");
+  view.appendChild($(`<h2>Earnings · last ${e.range_days} days</h2>`));
+  view.appendChild($(`<div class="card pad">
+    <div class="sub">Available to withdraw</div>
+    <div class="money" style="font-size:32px;font-weight:800">${money(e.available_cents)}</div>
+    <div class="grid2" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
+      <div class="stat"><b class="money">${money(e.gross_cents)}</b><span>Gross</span></div>
+      <div class="stat"><b class="money">−${money(e.fee_cents)}</b><span>Fee ${(e.platform_fee_bps/100).toFixed(0)}%</span></div>
+      <div class="stat"><b class="money">${money(e.net_cents)}</b><span>Yours</span></div>
+    </div>
+    <div class="grid2" style="margin-top:6px">
+      <div class="stat"><b>${e.active_subscribers}</b><span>Subscribers</span></div>
+      <div class="stat"><b>${e.followers}</b><span>Followers</span></div>
+    </div>
+  </div>`));
+
+  if (e.by_kind.length){
+    const max = Math.max(...e.by_kind.map(l=>l.net_cents), 1);
+    const card = $(`<div class="card pad"></div>`);
+    e.by_kind.forEach(l => card.appendChild($(`<div style="margin-bottom:12px">
+      <div class="row"><span>${esc(l.kind)} <span class="sub">×${l.count}</span></span>
+        <div class="spacer"></div><b class="money">${money(l.net_cents)}</b></div>
+      <div class="bar"><i style="width:${Math.round(l.net_cents/max*100)}%"></i></div>
+    </div>`)));
+    view.appendChild(card);
+  }
+
+  if (e.available_cents > 0){
+    const b = $(`<button class="btn">Withdraw ${money(e.available_cents)}</button>`);
+    b.onclick = async () => {
+      await api("/me/earnings/payout", {method:"POST", body:{amount_cents:e.available_cents}});
+      toast("Payout recorded — no bank transfer happens in this build");
+      go("earnings");
+    };
+    view.appendChild(b);
+  }
+
+  view.appendChild($(`<h2>Recent</h2>`));
+  if (!e.recent.length) view.appendChild($(`<div class="empty">No earnings yet.</div>`));
+  const list = $(`<div class="card pad"></div>`);
+  e.recent.forEach(r => list.appendChild($(`<div class="split">
+    <span>${esc(r.kind)} <span class="sub">${esc(r.note||"")}</span></span>
+    <b class="money">${money(r.net_cents)}</b></div>`)));
+  if (e.recent.length) view.appendChild(list);
+}
+
+async function viewProfile(view){
+  view.innerHTML = "";
+  state.me = await api("/auth/me");
+  const me = state.me;
+  view.appendChild($(`<div class="card pad row">
+    <div class="av" style="width:56px;height:56px;font-size:26px">${esc(me.avatar_emoji)}</div>
+    <div style="flex:1"><div class="name" style="font-size:18px">${esc(me.display_name)}</div>
+      <div class="sub">${esc(me.email)}${me.handle?" · @"+esc(me.handle):""}</div></div>
+  </div>`));
+
+  const links = [
+    ["💰 Wallet & orders", () => go("wallet")],
+    ...(me.is_creator ? [["📈 Earnings", () => go("earnings")],
+                        ["🎛 My channel", () => go("creator", {handle: me.handle})]] : []),
+    ["✉️ Inbox", () => go("inbox")],
+  ];
+  links.forEach(([label, fn]) => {
+    const b = $(`<button class="card pad row" style="width:100%;text-align:left"><span>${label}</span>
+      <div class="spacer"></div><span class="sub">›</span></button>`);
+    b.onclick = fn; view.appendChild(b);
+  });
+
+  if (!me.is_creator){
+    view.appendChild($(`<h2>Become a creator</h2>`));
+    const form = $(`<form class="card pad">
+      <label>Handle</label><input name="handle" pattern="[a-z0-9_]{3,30}" required placeholder="yourname">
+      <label>Channel name</label><input name="display_name" required maxlength="80" value="${esc(me.display_name)}">
+      <label>Tagline</label><input name="tagline" maxlength="160" placeholder="What fans get here">
+      <label>Category</label><input name="category" maxlength="40" value="entertainment">
+      <button class="btn" style="margin-top:14px">Open my channel</button>
+    </form>`);
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      try{
+        await api("/creators", {method:"POST", body:{
+          handle: form.handle.value.toLowerCase(), display_name: form.display_name.value,
+          tagline: form.tagline.value, category: form.category.value || "entertainment"}});
+        state.me = await api("/auth/me");
+        toast("Channel created"); go("profile");
+      }catch(_){}
+    };
+    view.appendChild(form);
+  }
+
+  const out = $(`<button class="btn ghost" style="margin-top:14px">Sign out</button>`);
+  out.onclick = signOut;
+  view.appendChild(out);
+}
+
+async function viewCreate(view){
+  view.innerHTML = "";
+  if (!state.me.is_creator){
+    view.appendChild($(`<div class="empty">Open a creator channel first — Profile › Become a creator.</div>`));
+    const b = $(`<button class="btn">Go to Profile</button>`); b.onclick=()=>go("profile");
+    view.appendChild(b); return;
+  }
+  const me = await api(`/creators/${state.me.handle}`);
+  const tierOptions = me.tiers.map(t=>`<option value="${t.id}">${esc(t.name)} — ${money(t.price_cents)}/mo</option>`).join("");
+
+  view.appendChild($(`<h2>Create</h2>`));
+  const tabs = $(`<div class="rail" style="margin-bottom:12px"></div>`);
+  const panes = {};
+  const which = state.route.kind || "post";
+  [["post","Post"],["live","Go live"],["tier","Tier"],["product","Product"]].forEach(([k,label])=>{
+    const c = $(`<button class="chip ${which===k?"on":""}">${label}</button>`);
+    c.onclick = () => go("create", {kind:k});
+    tabs.appendChild(c);
+  });
+  view.appendChild(tabs);
+
+  if (which === "post"){
+    const form = $(`<form class="card pad">
+      <label>Type</label>
+      <select name="kind"><option value="photo">Photo</option><option value="video">Video</option>
+        <option value="audio">Audio</option><option value="text">Text</option></select>
+      <label>Title</label><input name="title" maxlength="160" placeholder="New rehearsal footage 👀">
+      <label>Body</label><textarea name="body" rows="3" placeholder="What fans see once it's unlocked"></textarea>
+      <label>Media URL (optional)</label><input name="media_url" placeholder="https://…">
+      <label>Teaser image URL (optional)</label><input name="preview_url" placeholder="https://…">
+      <label>Who can see it</label>
+      <select name="visibility"><option value="public">Everyone</option>
+        <option value="subscribers">Subscribers</option><option value="ppv">Pay to unlock</option></select>
+      <div data-when="ppv" hidden><label>Price (USD)</label><input name="price" type="number" min="0.5" step="0.5" value="5"></div>
+      <div data-when="subscribers" hidden><label>Minimum tier</label>
+        <select name="min_tier_id"><option value="">Any tier</option>${tierOptions}</select></div>
+      <button class="btn" style="margin-top:14px">Publish</button>
+    </form>`);
+    const sync = () => {
+      form.querySelector('[data-when="ppv"]').hidden = form.visibility.value !== "ppv";
+      form.querySelector('[data-when="subscribers"]').hidden = form.visibility.value !== "subscribers";
+    };
+    form.visibility.onchange = sync; sync();
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const body = {
+        kind: form.kind.value, title: form.title.value, body: form.body.value,
+        media_url: form.media_url.value || null, preview_url: form.preview_url.value || null,
+        visibility: form.visibility.value,
+      };
+      if (body.visibility === "ppv") body.price_cents = Math.round(parseFloat(form.price.value)*100);
+      if (body.visibility === "subscribers" && form.min_tier_id.value) body.min_tier_id = Number(form.min_tier_id.value);
+      try{ await api("/posts", {method:"POST", body}); toast("Posted"); go("home"); }catch(_){}
+    };
+    view.appendChild(form);
+  }
+
+  if (which === "live"){
+    const form = $(`<form class="card pad">
+      <label>Title</label><input name="title" required maxlength="160" placeholder="Backstage with me">
+      <label>Description</label><textarea name="description" rows="2"></textarea>
+      <label>Access</label>
+      <select name="access"><option value="free">Free for everyone</option>
+        <option value="subscribers">Subscribers only</option><option value="ticket">Ticketed</option></select>
+      <div data-when="ticket" hidden><label>Ticket price (USD)</label>
+        <input name="price" type="number" min="1" step="0.5" value="10"></div>
+      <button class="btn" style="margin-top:14px">Schedule</button>
+    </form>`);
+    const sync = () => form.querySelector('[data-when="ticket"]').hidden = form.access.value !== "ticket";
+    form.access.onchange = sync; sync();
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const body = {title: form.title.value, description: form.description.value, access: form.access.value};
+      if (body.access === "ticket") body.ticket_price_cents = Math.round(parseFloat(form.price.value)*100);
+      try{
+        const ev = await api("/live", {method:"POST", body});
+        await api(`/live/${ev.id}/start`, {method:"POST"});
+        toast("You're live"); go("live");
+      }catch(_){}
+    };
+    view.appendChild(form);
+    view.appendChild($(`<p class="note">Going live flips the event's status and opens the paywall.
+      Attaching an actual stream needs a video provider — this build has none, so playback URLs stay empty.</p>`));
+  }
+
+  if (which === "tier"){
+    const form = $(`<form class="card pad">
+      <label>Name</label><input name="name" required maxlength="60" placeholder="Insider">
+      <label>Price per month (USD)</label><input name="price" type="number" min="0" step="0.5" value="9.99" required>
+      <label>Description</label><textarea name="description" rows="2"></textarea>
+      <label>Perks (one per line)</label><textarea name="perks" rows="3" placeholder="Members-only posts&#10;Early access"></textarea>
+      <label class="row" style="gap:8px"><input type="checkbox" name="vip" style="width:auto"> Mark as VIP</label>
+      <button class="btn" style="margin-top:14px">Add tier</button>
+    </form>`);
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      try{
+        await api("/creators/me/tiers", {method:"POST", body:{
+          name: form.name.value, price_cents: Math.round(parseFloat(form.price.value)*100),
+          description: form.description.value,
+          perks: form.perks.value.split("\n").map(s=>s.trim()).filter(Boolean),
+          is_vip: form.vip.checked}});
+        toast("Tier added"); go("creator", {handle: state.me.handle});
+      }catch(_){}
+    };
+    view.appendChild(form);
+  }
+
+  if (which === "product"){
+    const form = $(`<form class="card pad">
+      <label>Kind</label><select name="kind"><option value="merch">Merch</option><option value="digital">Digital download</option></select>
+      <label>Name</label><input name="name" required maxlength="120">
+      <label>Description</label><textarea name="description" rows="2"></textarea>
+      <label>Price (USD)</label><input name="price" type="number" min="0" step="0.5" value="25" required>
+      <div data-when="merch"><label>Inventory (blank = unlimited)</label><input name="inventory" type="number" min="0"></div>
+      <div data-when="digital" hidden><label>File URL</label><input name="asset" placeholder="https://…"></div>
+      <button class="btn" style="margin-top:14px">Add to shop</button>
+    </form>`);
+    const sync = () => {
+      form.querySelector('[data-when="merch"]').hidden = form.kind.value !== "merch";
+      form.querySelector('[data-when="digital"]').hidden = form.kind.value !== "digital";
+    };
+    form.kind.onchange = sync; sync();
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const body = {kind: form.kind.value, name: form.name.value, description: form.description.value,
+        price_cents: Math.round(parseFloat(form.price.value)*100)};
+      if (body.kind === "merch") body.inventory = form.inventory.value === "" ? null : Number(form.inventory.value);
+      else body.digital_asset_url = form.asset.value;
+      try{ await api("/creators/me/products", {method:"POST", body}); toast("Added to shop");
+        go("creator", {handle: state.me.handle}); }catch(_){}
+    };
+    view.appendChild(form);
+  }
+}
+
+/* ---------------------------------------------------------------- router */
+const SCREENS = {
+  auth: viewAuth, home: viewHome, discover: viewDiscover, live: viewLive,
+  creator: viewCreator, inbox: viewInbox, thread: viewThread, wallet: viewWallet,
+  earnings: viewEarnings, profile: viewProfile, create: viewCreate,
+};
+
+async function render(){
+  const view = document.getElementById("view");
+  renderTopbar(); renderNav();
+  const screen = SCREENS[state.route.name] || viewHome;
+  if (!state.me && state.route.name !== "auth"){ return viewAuth(view); }
+  try{ await screen(view); }
+  catch(err){ view.innerHTML = `<div class="empty">${esc(err.message||"Something went wrong")}</div>`; }
+  renderTopbar();
+}
+
+(async function boot(){
+  if (state.token){
+    try{ state.me = await api("/auth/me", {quiet:true}); go("home"); return; }
+    catch(_){ localStorage.removeItem("lp_token"); state.token=null; }
+  }
+  go("auth");
+})();
+</script>
+</body>
+</html>
