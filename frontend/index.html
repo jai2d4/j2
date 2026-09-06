@@ -930,7 +930,9 @@ const FILM_METRICS=["Field Speed","Contact","Play Recognition","Tackling","Versa
 // this file directly off disk (file://) has no usable origin, so fall
 // back to localhost:8000 for local dev.
 let filmState = {name:null, mode:null, analysis:null};
-const API_BASE = location.origin.startsWith("http") ? location.origin : "http://localhost:8000";
+const API_BASE = location.port === "5173"
+  ? `${location.protocol}//${location.hostname}:8000`
+  : (location.origin.startsWith("http") ? location.origin : "http://localhost:8000");
 const API = API_BASE + "/api/v1/scout/analyze-film/jobs";
 
 function pipelineHTML(steps){

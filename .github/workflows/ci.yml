@@ -31,6 +31,10 @@ jobs:
         with:
           python-version: "3.11"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
@@ -47,4 +51,10 @@ jobs:
           POSTGRES_DB: tru_scouting_test
           POSTGRES_USER: tru_admin
           POSTGRES_PASSWORD: test
-        run: pytest -v
+        run: pytest tests backend/tests -v
+
+      - name: Check standalone frontend
+        run: node frontend/scripts/check.mjs
+
+      - name: Build standalone frontend
+        run: node frontend/scripts/build.mjs
