@@ -45,6 +45,13 @@ low-confidence until confirmed. Human boundary corrections, play exclusions,
 observation overrides, and scout notes retain their original values and audit
 history.
 
+Phase 7 adds a provider-neutral AI observation layer with OpenAI, Google, and
+Anthropic adapters selected through environment variables. Responses are
+validated against strict Pydantic JSON contracts that forbid extra fields,
+including any AI-authored official score. The reasoner requires evidence,
+confidence, timestamp, and reason, and instructs providers to return `unknown`
+instead of guessing. Demo mode makes no external AI request.
+
 On Windows, run `setup_trugrade.bat` once and then `run_trugrade.bat`.
 
 ## Structure
