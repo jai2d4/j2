@@ -25,6 +25,13 @@ catalog at `GET /api/videos`, background extraction jobs at
 timestamps. Uploaded film remains local and the upload request never waits for
 frame extraction.
 
+Phase 4 adds a lazy, swappable Ultralytics YOLO adapter and a two-stage
+ByteTrack-style tracker. Normal pretrained YOLO recognizes players (`person`)
+and football candidates (`sports ball`); custom football models may additionally
+label officials without changing downstream code. Detection and persistent
+track results are stored as JSON under local storage, with centers, bounding
+boxes, velocity, speed, direction, confidence, and original timestamps.
+
 On Windows, run `setup_trugrade.bat` once and then `run_trugrade.bat`.
 
 ## Structure

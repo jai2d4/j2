@@ -12,6 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from backend.api.videos import storage_root, video_store
 from backend.video.frame_extractor import FrameExtractor
+from backend.vision.pipeline import analyze_frames
 
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
@@ -42,7 +43,20 @@ async def _extract_job(job_id: str, video: dict) -> None:
             _write_job(job)
 
         frames = await asyncio.to_thread(extractor.extract, video["video_id"], Path(video["file_path"]), update)
-        job.update(status="completed", progress=100, frame_count=len(frames), message="Frame extraction completed.")
+        job.update(status="detecting", progress=0, frame_count=len(frames), message="Detecting players and football objects.")
+        _write_job(job)
+
+        def vision_progress(value: int) -> None:
+            job["progress"] = value
+            _write_job(job)
+
+        detections, tracks = await asyncio.to_thread(
+            analyze_frames, video["video_id"], frames, storage_root / "vision", vision_progress
+        )
+        job.update(status="tracking", progress=99, message="Finalizing persistent player tracks.")
+        _write_job(job)
+        job.update(status="completed", progress=100, detection_frames=len(detections),
+                   track_count=len(tracks), message="Detection and tracking completed.")
     except Exception as exc:
         job.update(status="failed", message="Frame extraction failed.", error=str(exc))
     job["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -69,4 +83,3 @@ async def analysis_status(job_id: str):
     if not job:
         raise HTTPException(404, "Analysis job not found.")
     return job
-
