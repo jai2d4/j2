@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: livephoria
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: livephoria-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: APP_ENV
+        value: production
+      - key: PLATFORM_FEE_BPS
+        value: "1000"
+      # Set these once Axiome is reachable; blank keeps the integration off.
+      - key: AXIOME_BASE_URL
+        sync: false
+      - key: AXIOME_APP_KEY
+        sync: false
+      - key: AXIOME_CONTROL_KEY
+        sync: false
+
+databases:
+  - name: livephoria-db
+    plan: free
