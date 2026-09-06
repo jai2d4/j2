@@ -7,6 +7,7 @@ from typing import Callable
 
 from .detector import FootballDetector
 from .tracker import ByteTrackTracker
+from backend.football.movement import movement_metrics
 
 
 def analyze_frames(video_id: str, frames: list[dict], output_root: Path,
@@ -26,9 +27,10 @@ def analyze_frames(video_id: str, frames: list[dict], output_root: Path,
         if progress:
             progress(int((index + 1) * 100 / total))
     tracks = tracker.export_tracks()
+    for track in tracks:
+        track["movement"] = movement_metrics(track["positions"])
     target = Path(output_root) / video_id
     target.mkdir(parents=True, exist_ok=True)
     (target / "detections.json").write_text(json.dumps(detections, indent=2), encoding="utf-8")
     (target / "tracks.json").write_text(json.dumps(tracks, indent=2), encoding="utf-8")
     return detections, tracks
-

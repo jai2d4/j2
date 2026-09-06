@@ -38,6 +38,13 @@ candidate contracts, and persistent track-to-player assignment endpoints.
 Human confirmations propagate to the stored game track and retain original
 value, corrected value, time, reason, and `source="human"` audit history.
 
+Phase 6 adds conservative activity-gap play segmentation, track-derived
+movement metrics, strict structured football observations, and evidence links
+to source video/play/frame/track timestamps. Automatic play boundaries remain
+low-confidence until confirmed. Human boundary corrections, play exclusions,
+observation overrides, and scout notes retain their original values and audit
+history.
+
 On Windows, run `setup_trugrade.bat` once and then `run_trugrade.bat`.
 
 ## Structure

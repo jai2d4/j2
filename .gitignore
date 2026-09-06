@@ -15,4 +15,7 @@ backend/storage/metadata/*
 backend/storage/vision/*
 backend/storage/assignments/*
 backend/storage/calibrations/*
+backend/storage/football/*
+backend/storage/overrides/*
+backend/storage/evidence/*
 !backend/storage/**/.gitkeep
