@@ -22,6 +22,7 @@ def user_out(user: User) -> UserOut:
         wallet_balance_cents=user.wallet_balance_cents,
         earnings_balance_cents=user.earnings_balance_cents,
         handle=user.creator.handle if user.creator else None,
+        age_check_status=user.age_check_status,
     )
 
 

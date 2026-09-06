@@ -196,6 +196,10 @@ async def main() -> None:
                 display_name=name,
                 avatar_emoji=emoji,
                 wallet_balance_cents=10_000,
+                # Marked verified so the demo can show both sides of the age gate.
+                # A real account only reaches this via a provider or an operator.
+                age_check_status="verified" if index == 0 else "unverified",
+                age_verified_at=now if index == 0 else None,
             )
             session.add(fan)
             await session.flush()

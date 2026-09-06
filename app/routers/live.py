@@ -42,6 +42,8 @@ async def _serialize(
         min_tier_price_cents=min_tier_price,
         viewer_tier_price_cents=await catalog.viewer_tier_price_cents(session, viewer, creator.id),
         has_ticket=has_ticket,
+        is_adult=creator.is_adult_channel,
+        viewer_is_verified_adult=viewer is not None and viewer.age_check_status == "verified",
     )
     return LiveOut(
         id=event.id,

@@ -1,7 +1,7 @@
 """Request and response shapes. Amounts are always integer cents."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -38,6 +38,7 @@ class UserOut(BaseModel):
     wallet_balance_cents: int
     earnings_balance_cents: int
     handle: str | None = None
+    age_check_status: str = "unverified"
 
 
 # ---------------------------------------------------------------- creator
@@ -70,6 +71,7 @@ class CreatorUpdate(BaseModel):
     tips_enabled: bool | None = None
     min_tip_cents: int | None = Field(default=None, ge=0)
     dm_price_cents: int | None = Field(default=None, ge=0)
+    is_adult_channel: bool | None = None
 
 
 class TierOut(BaseModel):
@@ -102,6 +104,7 @@ class CreatorOut(BaseModel):
     avatar_url: str | None
     avatar_emoji: str
     is_verified: bool
+    is_adult_channel: bool = False
     tips_enabled: bool
     min_tip_cents: int
     subscriber_count: int
@@ -127,6 +130,7 @@ class PostCreate(BaseModel):
     visibility: str = "public"
     price_cents: int = Field(default=0, ge=0, le=100_000)
     min_tier_id: int | None = None
+    is_adult: bool = False
 
     @field_validator("visibility")
     @classmethod
@@ -172,6 +176,8 @@ class PostOut(BaseModel):
     body: str | None = None
     media_url: str | None = None
     viewer_has_liked: bool = False
+    is_adult: bool = False
+    moderation_status: str = "visible"
 
 
 class CommentCreate(BaseModel):
@@ -379,3 +385,128 @@ class LedgerOut(BaseModel):
 CreatorOut.model_rebuild()
 TokenResponse.model_rebuild()
 EarningsOut.model_rebuild()
+
+
+# ---------------------------------------------------------------- safety
+
+
+class ReportCreate(BaseModel):
+    target_type: str
+    target_id: int
+    reason: str
+    detail: str = Field(default="", max_length=2000)
+
+
+class ReportOut(BaseModel):
+    id: int
+    target_type: str
+    target_id: int
+    reason: str
+    reason_label: str
+    detail: str
+    priority: str
+    status: str
+    created_at: datetime
+    resolved_at: datetime | None = None
+    resolution: str = ""
+    reporter_display_name: str | None = None
+
+
+class ModerationDecision(BaseModel):
+    action: str
+    note: str = Field(default="", max_length=300)
+
+
+class ActionOut(BaseModel):
+    id: int
+    action: str
+    target_type: str
+    target_id: int
+    reason: str
+    note: str
+    created_at: datetime
+    appealable: bool
+    appeal_status: str | None = None
+
+
+class AppealCreate(BaseModel):
+    action_id: int
+    body: str = Field(min_length=1, max_length=2000)
+
+
+class AppealDecision(BaseModel):
+    decision: str  # upheld | rejected
+    note: str = Field(default="", max_length=300)
+
+
+class AppealOut(BaseModel):
+    id: int
+    action_id: int
+    action: str
+    target_type: str
+    target_id: int
+    body: str
+    status: str
+    created_at: datetime
+    decided_at: datetime | None = None
+    decision_note: str = ""
+    user_display_name: str | None = None
+
+
+class AgeVerificationRequest(BaseModel):
+    date_of_birth: date
+    # A reference from whatever identity flow was used. No document is stored here.
+    document_reference: str = Field(default="", max_length=120)
+
+
+class AgeVerificationOut(BaseModel):
+    status: str
+    verified_at: datetime | None = None
+    message: str = ""
+
+
+class AgeDecision(BaseModel):
+    approved: bool
+    note: str = Field(default="", max_length=300)
+
+
+class PayoutAccountCreate(BaseModel):
+    legal_name: str = Field(min_length=1, max_length=120)
+    country: str = Field(min_length=2, max_length=2)
+
+    @field_validator("country")
+    @classmethod
+    def _upper(cls, v: str) -> str:
+        return v.upper()
+
+
+class PayoutAccountOut(BaseModel):
+    status: str
+    legal_name: str
+    country: str
+    note: str = ""
+    reviewed_at: datetime | None = None
+    can_withdraw: bool
+
+
+class PayoutOut(BaseModel):
+    id: int
+    amount_cents: int
+    status: str
+    created_at: datetime
+    settled_at: datetime | None = None
+    note: str = ""
+    provider_reference: str | None = None
+    user_display_name: str | None = None
+
+
+class PayoutSettlement(BaseModel):
+    status: str  # paid | failed
+    provider_reference: str = Field(default="", max_length=120)
+    note: str = Field(default="", max_length=300)
+
+
+class KycDecision(BaseModel):
+    approved: bool
+    note: str = Field(default="", max_length=300)
+    provider_reference: str = Field(default="", max_length=120)

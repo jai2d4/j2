@@ -1,4 +1,7 @@
-"""Wallet, tips, the platform's cut, and the earnings dashboard."""
+"""Wallet, tips, the platform's cut, the earnings dashboard, and getting paid out."""
+from tests.conftest import CONTROL_KEY
+
+KEY = {"X-Axiome-Key": CONTROL_KEY}
 
 
 async def test_a_tip_splits_between_creator_and_platform(client, make_creator, make_user):
@@ -65,25 +68,90 @@ async def test_earnings_add_up_across_every_revenue_type(client, make_creator, m
     assert (await fan.wallet())["wallet_balance_cents"] == 10_000 - 3800
 
 
-async def test_a_creator_can_withdraw_only_what_they_have(client, make_creator, make_user):
+async def test_withdrawing_needs_identity_checks_then_a_balance(client, make_creator, make_user):
     creator, handle, _ = await make_creator()
     fan = await make_user()
     await fan.topup(5000)
     await client.post(
         f"/api/v1/creators/{handle}/tip", json={"amount_cents": 2000}, headers=fan.headers
     )
+    assert (await creator.wallet())["earnings_balance_cents"] == 1800
 
+    # No payout account at all.
+    r = await client.post(
+        "/api/v1/me/earnings/payout", json={"amount_cents": 1000}, headers=creator.headers
+    )
+    assert r.status_code == 403
+    assert "payout details" in r.json()["detail"]
+
+    # Submitted, not yet reviewed.
+    r = await client.post(
+        "/api/v1/me/payout-account",
+        json={"legal_name": "A Creator", "country": "us"},
+        headers=creator.headers,
+    )
+    assert r.status_code == 201 and r.json()["status"] == "pending"
+    assert r.json()["can_withdraw"] is False
+    r = await client.post(
+        "/api/v1/me/earnings/payout", json={"amount_cents": 1000}, headers=creator.headers
+    )
+    assert r.status_code == 403
+    assert (await creator.wallet())["earnings_balance_cents"] == 1800  # nothing moved
+
+    account_id = (await client.get("/api/v1/control/kyc", headers=KEY)).json()[0]["id"]
+    await client.post(
+        f"/api/v1/control/kyc/{account_id}", json={"approved": True}, headers=KEY
+    )
+
+    # Approved, but still can't take out more than is there.
     r = await client.post(
         "/api/v1/me/earnings/payout", json={"amount_cents": 5000}, headers=creator.headers
     )
     assert r.status_code == 402
-    assert (await creator.wallet())["earnings_balance_cents"] == 1800
 
     r = await client.post(
         "/api/v1/me/earnings/payout", json={"amount_cents": 1800}, headers=creator.headers
     )
     assert r.status_code == 200
-    assert r.json()["earnings_balance_cents"] == 0
+    assert r.json()["status"] == "pending"  # requested, not paid
+    assert (await creator.wallet())["earnings_balance_cents"] == 0
+
+
+async def test_a_failed_payout_gives_the_money_back(client, make_creator, make_user):
+    creator, handle, _ = await make_creator()
+    fan = await make_user()
+    await fan.topup(5000)
+    await client.post(
+        f"/api/v1/creators/{handle}/tip", json={"amount_cents": 1000}, headers=fan.headers
+    )
+    await client.post(
+        "/api/v1/me/payout-account",
+        json={"legal_name": "A Creator", "country": "GB"},
+        headers=creator.headers,
+    )
+    account_id = (await client.get("/api/v1/control/kyc", headers=KEY)).json()[0]["id"]
+    await client.post(f"/api/v1/control/kyc/{account_id}", json={"approved": True}, headers=KEY)
+
+    payout = (
+        await client.post(
+            "/api/v1/me/earnings/payout", json={"amount_cents": 900}, headers=creator.headers
+        )
+    ).json()
+    assert (await creator.wallet())["earnings_balance_cents"] == 0
+
+    queue = (await client.get("/api/v1/control/payouts", headers=KEY)).json()
+    assert [p["id"] for p in queue] == [payout["id"]]
+
+    r = await client.post(
+        f"/api/v1/control/payouts/{payout['id']}",
+        json={"status": "failed", "note": "bank rejected"},
+        headers=KEY,
+    )
+    assert r.json()["earnings_balance_cents"] == 900
+
+    # The failed attempt stays on the record rather than vanishing.
+    settled = (await client.get("/api/v1/me/payouts", headers=creator.headers)).json()
+    assert [(p["status"], p["note"]) for p in settled] == [("failed", "bank rejected")]
 
 
 async def test_earnings_are_not_spendable_as_fan_credit(client, make_creator, make_user):

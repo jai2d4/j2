@@ -32,10 +32,21 @@ def decide_post_access(
     min_tier_price_cents: int | None = None,
     viewer_tier_price_cents: int | None = None,
     has_unlock: bool = False,
+    is_adult: bool = False,
+    viewer_is_verified_adult: bool = False,
+    is_removed: bool = False,
 ) -> Access:
     """`viewer_tier_price_cents` is None when the viewer has no active subscription."""
+    if is_removed:
+        # The author still sees that it exists; everyone else sees nothing.
+        return Access(is_owner, "removed", None if is_owner else "Removed after review")
     if is_owner:
         return Access(True, "owner")
+
+    # Age assurance sits in front of the paywall: money never buys past it.
+    if is_adult and not viewer_is_verified_adult:
+        return Access(False, "age_verification_required", "Verify your age to view")
+
     if visibility == "public":
         return Access(True, "public")
 
@@ -64,9 +75,13 @@ def decide_live_access(
     min_tier_price_cents: int | None = None,
     viewer_tier_price_cents: int | None = None,
     has_ticket: bool = False,
+    is_adult: bool = False,
+    viewer_is_verified_adult: bool = False,
 ) -> Access:
     if is_owner:
         return Access(True, "owner")
+    if is_adult and not viewer_is_verified_adult:
+        return Access(False, "age_verification_required", "Verify your age to watch")
     if access == "free":
         return Access(True, "public")
 

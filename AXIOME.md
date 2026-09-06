@@ -43,7 +43,10 @@ controller can drive several different apps without special-casing each.
   "metrics": {
     "users": 7, "creators": 3, "posts": 7,
     "active_subscriptions": 4, "live_now": 2,
-    "gross_volume_cents": 3200, "platform_fees_cents": 320
+    "gross_volume_cents": 3200, "platform_fees_cents": 320,
+    "open_reports": 2, "urgent_reports": 1, "open_appeals": 0,
+    "removed_posts": 1, "suspended_users": 0,
+    "kyc_pending": 1, "payouts_pending": 1, "payouts_pending_cents": 1800
   }
 }
 ```
@@ -52,11 +55,23 @@ If metrics can't be collected, `metrics` carries `{"error": "..."}` and the
 heartbeat is still sent — a heartbeat that stops is a different signal from one
 that reports trouble.
 
+The safety and payout counts ride along on every heartbeat so a controller can
+see a backlog building without being asked for it.
+
 ### `POST /api/apps/events` — as things happen
 
 ```json
 {"slug": "livephoria", "event": "<name>", "at": "...", "data": { }}
 ```
+
+| Event | Sent when | `data` |
+| --- | --- | --- |
+| `moderation.urgent_report` | a report arrives with an urgent reason (`csam`, `nonconsensual`, `underage`, `threat`) | `report_id`, `reason`, `target_type`, `target_id` |
+| `moderation.appeal_filed` | someone appeals a decision | `appeal_id`, `action` |
+| `kyc.submitted` | a creator submits payout details | `user_id`, `country` |
+
+Urgent reports are pushed immediately rather than waiting for the next
+heartbeat: for those reasons the delay is itself the harm.
 
 ## Inbound — Axiome calls Livephoria
 
@@ -71,9 +86,25 @@ All under `/api/v1/control`, all requiring header `X-Axiome-Key:
 | POST | `/maintenance` | `{"enabled": true, "message": "..."}` — kill switch |
 | POST | `/users/{id}/suspend` | freeze an account (it can read, not act) |
 | POST | `/users/{id}/restore` | undo a suspension |
+| GET | `/moderation/reports?status=open` | the review queue — urgent first, then oldest |
+| POST | `/moderation/reports/{id}` | `{"action": "remove_content / restore_content / suspend_user / restore_user / dismiss", "note": "..."}` |
+| POST | `/moderation/actions` | act with no report behind it: same body plus `target_type`, `target_id` |
+| GET | `/moderation/appeals?status=open` | appeals waiting on a decision |
+| POST | `/moderation/appeals/{id}` | `{"decision": "upheld / rejected", "note": "..."}` — upholding reverses the original action |
+| GET | `/age-verifications` | age checks waiting on a decision |
+| POST | `/age-verifications/{user_id}` | `{"approved": true, "note": "..."}` |
+| GET | `/kyc?status=pending` | payout accounts waiting on review |
+| POST | `/kyc/{account_id}` | `{"approved": true, "provider_reference": "...", "note": "..."}` |
+| GET | `/payouts?status=pending` | withdrawals waiting to be settled |
+| POST | `/payouts/{id}` | `{"status": "paid / failed", "provider_reference": "...", "note": "..."}` — `failed` returns the money |
 
 `/api/v1/health` stays open and unauthenticated for uptime checks, and keeps
 answering during maintenance.
+
+Two of these queues carry an obligation the app cannot discharge on its own:
+urgent reports and age checks are decisions about real people, and until an
+identity provider and a detection vendor are connected, a human on the Axiome
+side is the only thing standing behind them.
 
 ## Changing this to match the real Axiome
 

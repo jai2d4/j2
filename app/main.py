@@ -25,6 +25,7 @@ from app.routers import (
     live,
     messages,
     posts,
+    safety,
     shop,
     subscriptions,
     wallet,
@@ -44,6 +45,11 @@ CAPABILITIES = [
     "digital-downloads",
     "direct-messages",
     "creator-earnings",
+    "moderation-queue",
+    "appeals",
+    "age-assurance",
+    "kyc",
+    "payout-settlement",
 ]
 
 # Reachable while the app is in maintenance, so the controller can turn it back on.
@@ -132,6 +138,7 @@ for module in (
     shop,
     messages,
     discover,
+    safety,
     control,
 ):
     app.include_router(module.router)

@@ -37,6 +37,10 @@ async def create_post(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "A pay-per-view post needs a price"
         )
+    if payload.is_adult and user.age_check_status != "verified":
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Verify your age before publishing 18+ content"
+        )
     if payload.min_tier_id is not None:
         tier = await session.get(Tier, payload.min_tier_id)
         if tier is None or tier.creator_id != creator.id:
@@ -62,7 +66,11 @@ async def feed(
     offset: int = Query(0, ge=0),
 ) -> list[PostOut]:
     """Signed in: creators you follow or subscribe to. Signed out: what's public."""
-    query = select(Post).order_by(Post.created_at.desc(), Post.id.desc())
+    query = (
+        select(Post)
+        .where(Post.status == "visible")
+        .order_by(Post.created_at.desc(), Post.id.desc())
+    )
 
     if viewer is not None:
         followed = await session.execute(
@@ -103,9 +111,13 @@ async def creator_posts(
     creator = await catalog.get_creator_by_handle(session, handle)
     if creator is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No creator @{handle}")
+    # The author still sees their own removed posts, flagged; nobody else does.
+    visible_only = viewer is None or viewer.id != creator.user_id
+    query = select(Post).where(Post.creator_id == creator.id)
+    if visible_only:
+        query = query.where(Post.status == "visible")
     result = await session.execute(
-        select(Post)
-        .where(Post.creator_id == creator.id)
+        query
         .order_by(Post.created_at.desc(), Post.id.desc())
         .limit(limit)
         .offset(offset)
@@ -216,7 +228,7 @@ async def list_comments(post_id: int, session: SessionDep) -> list[CommentOut]:
     result = await session.execute(
         select(Comment, User)
         .join(User, User.id == Comment.user_id)
-        .where(Comment.post_id == post_id)
+        .where(Comment.post_id == post_id, Comment.status == "visible")
         .order_by(Comment.created_at)
     )
     return [
@@ -246,6 +258,9 @@ async def add_comment(
         min_tier_price_cents=prices.get(post.min_tier_id) if post.min_tier_id else None,
         viewer_tier_price_cents=await catalog.viewer_tier_price_cents(session, user, creator.id),
         has_unlock=post.id in unlocked,
+        is_adult=post.is_adult or creator.is_adult_channel,
+        viewer_is_verified_adult=user.age_check_status == "verified",
+        is_removed=post.status == "removed",
     )
     if not access.granted:
         raise HTTPException(status.HTTP_403_FORBIDDEN, access.unlock_label or "Locked")

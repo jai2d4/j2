@@ -166,6 +166,8 @@ def serialize_post(
         body=post.body if access.granted else None,
         media_url=post.media_url if access.granted else None,
         viewer_has_liked=viewer_has_liked,
+        is_adult=post.is_adult,
+        moderation_status=post.status,
     )
 
 
@@ -185,6 +187,8 @@ async def serialize_posts(
     for creator_id in {p.creator_id for p in posts}:
         viewer_tiers[creator_id] = await viewer_tier_price_cents(session, viewer, creator_id)
 
+    viewer_is_adult = viewer is not None and viewer.age_check_status == "verified"
+
     out: list[PostOut] = []
     for post in posts:
         creator = creators[post.creator_id]
@@ -195,6 +199,9 @@ async def serialize_posts(
             min_tier_price_cents=prices.get(post.min_tier_id) if post.min_tier_id else None,
             viewer_tier_price_cents=viewer_tiers.get(post.creator_id),
             has_unlock=post.id in unlocked,
+            is_adult=post.is_adult or creator.is_adult_channel,
+            viewer_is_verified_adult=viewer_is_adult,
+            is_removed=post.status == "removed",
         )
         author = author_of(creator, creator_users.get(creator.user_id))
         out.append(serialize_post(post, author, access, viewer_has_liked=post.id in liked))

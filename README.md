@@ -23,6 +23,9 @@ whole product:
 | Money in and out | **Simulated.** Wallet top-ups and payouts move numbers in this database only. No card is charged, no bank transfer happens. `app/services/payments.py` has the provider seam a real PSP drops into. |
 | Live video | **Not included.** Events, access rules, and ticketing are real; there is no ingest, transcoding, or playback. `playback_url` stays empty until a streaming provider is wired up. |
 | Media uploads | **Not included.** Posts and products take URLs; there is no file storage yet. |
+| Reports, review queue, appeals | Real. Reports never auto-action; every decision is recorded and appealable. |
+| Age assurance | Real gate, **no identity provider**. Submissions sit at `pending` until an operator approves them — the stub never approves itself. |
+| Payout identity checks (KYC) | Real gate. Withdrawals are blocked until a payout account is approved; approval is an operator decision, not a vendor's. |
 | Verified badges | Manual. `is_verified` is set by an operator, never inferred. |
 | Recurring billing | Subscriptions run 30 days from purchase. Nothing renews them automatically yet — there is no billing scheduler. |
 | Demo data | `scripts/seed_demo.py` invents creators, posts, and prices. Fictional, for demos only. |
@@ -44,7 +47,7 @@ Seeded accounts all use the password `livephoria-demo` — e.g. `sam@example.tes
 (fan, $100 of test credit) or `aaliyahrose@example.test` (creator).
 
 ```bash
-pytest        # 40 tests, no network or database needed
+pytest        # 56 tests, no network or database needed
 ```
 
 ## How the paywall works
@@ -59,6 +62,15 @@ post, and the rules are tested without a database.
   tier; tiers rank by price, so subscribing at $25 opens anything gated at $10,
   and a $5 tier does not open a $25 gate.
 - **ppv** — needs a one-off purchase. A subscription alone never opens it.
+
+Two gates sit in front of all of that:
+
+- **Removed content** is visible only to its author, flagged, so a removal is never
+  silent. Everyone else gets the same shape as any locked post, with no body.
+- **18+ content** requires a viewer whose age check passed. It is checked before
+  the paywall, deliberately: **paying never opens an age gate**. A fan can buy a
+  PPV post and still not see it until they verify — the purchase stands, the gate
+  holds.
 
 A locked post returns its hook only: title, teaser image, price, counts. The body
 and `media_url` are withheld server-side, not hidden in the UI. Unknown
@@ -76,6 +88,54 @@ Amounts are integer cents everywhere; no float touches a balance.
 - A charge that would overdraw a wallet raises and writes nothing — no partial
   purchase, no orphaned unlock.
 
+## Trust and safety
+
+The moderation half of the app is in `app/services/moderation.py`, `app/routers/safety.py`
+(what a person can do) and `app/routers/control.py` (what a reviewer does).
+
+Two rules the code enforces rather than merely intends:
+
+- **Nothing is auto-actioned.** A report moves an item into a queue; it never
+  touches content. A person decides, the decision is written as a
+  `ModerationAction` naming a subject, and that subject can appeal it.
+- **Removal is reversible.** Content is marked `removed`, never deleted, so an
+  upheld appeal restores it exactly as it was.
+
+Reports can be filed **signed out**. Requiring an account to flag serious content
+would suppress exactly the reports that matter most. Reasons are a closed list;
+four of them (`csam`, `nonconsensual`, `underage`, `threat`) are urgent — they
+sort to the top of the queue and are pushed to Axiome the moment they arrive
+rather than waiting for the next heartbeat.
+
+An author sees every decision taken against them at `/api/v1/me/actions`, with
+whether it can be appealed. Dismissals and restorations are not appealable;
+removals and suspensions are, once each.
+
+### Age assurance
+
+`app/services/verification.py`. A declared birthday under 18 is refused outright.
+Being over 18 by that declaration proves nothing — it only lets the submission
+through to a provider, which is what actually decides. The bundled provider
+returns `pending` and nothing else, on purpose: **an auto-approving stub would be
+worse than none**, because the rest of the code would then be enforcing a check
+that never happened. An operator approves through the control plane until a real
+IDV vendor is connected.
+
+Publishing 18+ content requires a verified author; switching a channel to 18+
+requires the same.
+
+### Getting paid
+
+Withdrawing needs an approved payout account (`PayoutAccount`). That table holds
+a name, a country, a status, and the provider's reference — **never a bank
+number, government ID, or tax identifier**. Those belong with the payment
+provider that is legally equipped to hold them.
+
+A withdrawal moves the money out of the earnings balance and sits at `pending`.
+Nothing in this build settles it. When something outside reports back, the
+control plane records `paid` or `failed`; a failure returns the money to the
+creator and leaves the failed row in place, so the attempt stays on the record.
+
 ## Axiome control plane
 
 Axiome is the operator's controller app. Livephoria's side of that link is
@@ -92,10 +152,17 @@ secret:
 | Route | Does |
 | --- | --- |
 | `GET /control/status` | version, uptime, database reachability, maintenance flag, last outbound results |
-| `GET /control/metrics` | users, creators, posts, active subscriptions, live count, gross volume, platform fees |
+| `GET /control/metrics` | users, creators, posts, subscriptions, live count, gross volume, fees — plus the safety and payout backlog (open and urgent reports, open appeals, removed posts, suspended users, pending KYC and payouts) |
 | `GET /control/config` | effective settings, secrets excluded |
 | `POST /control/maintenance` | kill switch — every route except control and health returns 503 |
 | `POST /control/users/{id}/suspend` `…/restore` | freeze or restore an account |
+| `GET /control/moderation/reports` | the review queue, urgent first then oldest |
+| `POST /control/moderation/reports/{id}` | act on a report — remove, restore, suspend, or dismiss |
+| `POST /control/moderation/actions` | act with no report behind it (proactive review, legal order) |
+| `GET /control/moderation/appeals` `POST …/{id}` | the appeal queue; upholding one reverses the original action |
+| `GET /control/age-verifications` `POST …/{user_id}` | approve or reject an age check |
+| `GET /control/kyc` `POST …/{account_id}` | approve or reject a payout account |
+| `GET /control/payouts` `POST …/{id}` | settle a withdrawal as paid or failed |
 
 If `AXIOME_CONTROL_KEY` is unset those routes refuse **every** caller, so an
 unconfigured deployment is closed rather than open. If `AXIOME_BASE_URL` is
@@ -120,11 +187,13 @@ app/
 ├── models/             # SQLAlchemy tables + Pydantic schemas
 ├── services/
 │   ├── access.py       # THE PAYWALL — pure, testable rules
-│   ├── payments.py     # balances, fee split, ledger, provider seam
+│   ├── payments.py     # balances, fee split, ledger, payout gate, provider seam
+│   ├── moderation.py   # reasons, urgency, what a decision does
+│   ├── verification.py # age assurance — provider seam, never self-approving
 │   ├── catalog.py      # shared read queries and serialization
 │   └── axiome.py       # control-plane client
-├── routers/            # auth, creators, posts, subscriptions, wallet,
-│                       # live, shop, messages, discover, control
+├── routers/            # auth, creators, posts, subscriptions, wallet, live,
+│                       # shop, messages, discover, safety, control
 └── web/index.html      # the app fans and creators actually use
 ```
 
@@ -142,11 +211,18 @@ them to the async driver.
 
 Named plainly rather than left to be discovered:
 
-- No real payments, payouts, KYC, tax handling, chargebacks, or refunds.
+- **No money actually moves.** Top-ups, charges, and payouts are balances in this
+  database. No PSP, no card, no bank transfer, no tax handling, chargebacks, or
+  refunds. The flows and the gates around them are real; the settlement is not.
+- **No identity provider.** Age checks and KYC are real gates with real
+  consequences, but a human approves each one. Connect a vendor before launch.
+- **No proactive detection.** Moderation is reactive: it acts on reports and on
+  direct instruction. There is no hash matching, no classifier, and no scanning
+  of uploads — which for the `csam` reason in particular is not sufficient on its
+  own, and needs both a detection vendor and a reporting obligation met outside
+  this app.
 - No recurring billing — subscriptions expire after 30 days and are not renewed.
 - No media upload or video streaming; posts and products carry URLs.
-- No content moderation, age verification, or report/appeal flow. A platform in
-  this category needs all three before it takes a real payment.
 - No rate limiting, email verification, or password reset.
 - `create_all()` builds the schema on boot; there are no migrations yet.
 - The maintenance flag is per-process, so a multi-instance deploy needs Axiome to

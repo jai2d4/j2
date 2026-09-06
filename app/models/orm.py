@@ -41,6 +41,17 @@ class User(TimestampMixin, Base):
     # Set by the control plane. A suspended account can sign in but cannot act.
     is_suspended: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Age assurance. unverified | pending | verified | failed.
+    # Only a decision from an identity provider or an operator sets "verified" —
+    # nothing in this app infers an age from a self-declared birthday alone.
+    age_check_status: Mapped[str] = mapped_column(String(20), default="unverified")
+    age_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Reference handed back by the verification provider. The documents themselves
+    # are never stored here.
+    age_check_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
     # Fan-side spendable balance and creator-side earned balance are kept apart so a
     # creator's payout can never be silently spent as fan credit.
     wallet_balance_cents: Mapped[int] = mapped_column(Integer, default=0)
@@ -75,6 +86,9 @@ class CreatorProfile(TimestampMixin, Base):
 
     # Set by a human operator after ID review. Never inferred by the app.
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    # An 18+ channel. Only an age-verified account may switch this on, and every
+    # post under it is gated behind viewer age verification.
+    is_adult_channel: Mapped[bool] = mapped_column(Boolean, default=False)
 
     user: Mapped[User] = relationship(back_populates="creator")
     tiers: Mapped[list["Tier"]] = relationship(
@@ -142,6 +156,11 @@ class Post(TimestampMixin, Base):
     price_cents: Mapped[int] = mapped_column(Integer, default=0)
     min_tier_id: Mapped[int | None] = mapped_column(ForeignKey("tiers.id"), nullable=True)
 
+    is_adult: Mapped[bool] = mapped_column(Boolean, default=False)
+    # visible | removed. Removed content stays in the table so an appeal can
+    # restore it; it is filtered out of every listing.
+    status: Mapped[str] = mapped_column(String(20), default="visible", index=True)
+
     like_count: Mapped[int] = mapped_column(Integer, default=0)
     comment_count: Mapped[int] = mapped_column(Integer, default=0)
     unlock_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -175,6 +194,7 @@ class Comment(TimestampMixin, Base):
     post_id: Mapped[int] = mapped_column(ForeignKey("posts.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="visible", index=True)
 
 
 class LiveEvent(TimestampMixin, Base):
@@ -286,3 +306,105 @@ class LedgerEntry(TimestampMixin, Base):
     fee_cents: Mapped[int] = mapped_column(Integer, default=0)
     net_cents: Mapped[int] = mapped_column(Integer, default=0)
     note: Mapped[str] = mapped_column(String(200), default="")
+
+
+class Report(TimestampMixin, Base):
+    """Something a person flagged for review.
+
+    Reports are never auto-actioned. A human (or Axiome, acting for one) decides,
+    and the decision is written as a ModerationAction so it can be appealed.
+    """
+
+    __tablename__ = "reports"
+    __table_args__ = (Index("ix_report_queue", "status", "priority"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reporter_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    target_type: Mapped[str] = mapped_column(String(20), index=True)  # post|comment|creator|message
+    target_id: Mapped[int] = mapped_column(Integer, index=True)
+    reason: Mapped[str] = mapped_column(String(40), index=True)
+    detail: Mapped[str] = mapped_column(Text, default="")
+
+    # urgent reasons jump the queue; see services/moderation.py
+    priority: Mapped[str] = mapped_column(String(10), default="normal", index=True)
+    status: Mapped[str] = mapped_column(String(20), default="open", index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution: Mapped[str] = mapped_column(String(300), default="")
+
+
+class ModerationAction(TimestampMixin, Base):
+    """A decision taken on content or an account. Append-only; reversals are new rows."""
+
+    __tablename__ = "moderation_actions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int | None] = mapped_column(ForeignKey("reports.id"), nullable=True)
+    target_type: Mapped[str] = mapped_column(String(20))
+    target_id: Mapped[int] = mapped_column(Integer, index=True)
+    # remove_content | restore_content | suspend_user | restore_user | dismiss
+    action: Mapped[str] = mapped_column(String(30), index=True)
+    reason: Mapped[str] = mapped_column(String(40), default="")
+    note: Mapped[str] = mapped_column(String(300), default="")
+    # Who acted. "axiome" for the control plane; a person's identity comes from there.
+    actor: Mapped[str] = mapped_column(String(40), default="axiome")
+    # The account the action landed on, so they can be told and can appeal.
+    subject_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    appealable: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Appeal(TimestampMixin, Base):
+    """A user's challenge to an action taken against them."""
+
+    __tablename__ = "appeals"
+    __table_args__ = (UniqueConstraint("action_id", "user_id", name="uq_appeal"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    action_id: Mapped[int] = mapped_column(ForeignKey("moderation_actions.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="open", index=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_note: Mapped[str] = mapped_column(String(300), default="")
+
+
+class PayoutAccount(TimestampMixin, Base):
+    """A creator's payout identity.
+
+    Deliberately thin: this table holds a status and the provider's reference,
+    never a bank number, government ID, or tax identifier. Those live with the
+    payment provider that is legally equipped to hold them.
+    """
+
+    __tablename__ = "payout_accounts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    legal_name: Mapped[str] = mapped_column(String(120))
+    country: Mapped[str] = mapped_column(String(2))
+    # unstarted | pending | approved | rejected
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    provider_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    note: Mapped[str] = mapped_column(String(300), default="")
+
+
+class Payout(TimestampMixin, Base):
+    """A withdrawal request and where it got to.
+
+    `paid` here means the provider reported it paid. Nothing in this build moves
+    money on its own — a payout sits at `pending` until something outside settles it.
+    """
+
+    __tablename__ = "payouts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    provider_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    note: Mapped[str] = mapped_column(String(300), default="")

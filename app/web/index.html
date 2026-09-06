@@ -119,6 +119,10 @@
     font-size:14px;box-shadow:0 12px 32px rgba(0,0,0,.5)}
   .toast.bad{border-color:#5b2233;background:#2a1620}
   .money{font-variant-numeric:tabular-nums}
+  .notice{background:var(--surface-2);border:1px solid var(--line);border-left:3px solid var(--gold);
+    border-radius:10px;padding:11px 13px;font-size:13px;color:var(--muted);line-height:1.45}
+  .notice.bad{border-left-color:var(--live)}
+  .notice.good{border-left-color:var(--ok)}
   .bar{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin-top:6px}
   .bar i{display:block;height:100%;background:linear-gradient(92deg,var(--accent),var(--accent-2))}
   .note{font-size:12px;color:var(--muted);line-height:1.45}
@@ -189,7 +193,7 @@ function setSession(payload){
 function renderTopbar(){
   const bar = document.getElementById("topbar");
   const r = state.route;
-  const back = ["creator","thread","create","wallet","earnings","settings"].includes(r.name);
+  const back = ["creator","thread","create","wallet","earnings","safety","age"].includes(r.name);
   bar.innerHTML = "";
   if (back){
     bar.appendChild($(`<button class="chip" aria-label="Back">‹ Back</button>`)).onclick = () => go(state.tab);
@@ -251,15 +255,21 @@ function postCard(post){
       ${post.locked ? `<div class="locked-media">
           <div style="font-size:26px">🔒</div>
           <div class="lock-note">${esc(post.unlock_label || "Locked")}</div>
-          <button class="btn slim" data-act="unlock">${post.visibility==="ppv"?"Unlock":"See tiers"}</button>
+          ${post.lock_reason === "removed" ? "" : `<button class="btn slim" data-act="unlock">${
+            post.lock_reason === "age_verification_required" ? "Verify your age"
+            : post.visibility === "ppv" ? "Unlock" : "See tiers"}</button>`}
         </div>`:""}
     </div>
     ${!post.locked && post.body ? `<div class="pad">${esc(post.body)}</div>`:""}
+    ${post.moderation_status === "removed" ? `<div class="pad"><div class="notice">
+        Removed after review. Only you can see this. You can appeal it from Profile › Safety.
+      </div></div>`:""}
     <div class="pad row" style="gap:16px">
       <button class="sub" data-act="like">${post.viewer_has_liked?"❤️":"🤍"} ${post.like_count}</button>
       <button class="sub" data-act="comments">💬 ${post.comment_count}</button>
       ${post.unlock_count?`<span class="sub">🔓 ${post.unlock_count}</span>`:""}
       <div class="spacer"></div>
+      <button class="sub" data-act="report" title="Report this post">⚑</button>
       <button class="sub" data-act="profile">@${esc(a.handle)}</button>
     </div>
   </article>`);
@@ -273,8 +283,13 @@ function postCard(post){
     render();
   };
   card.querySelector('[data-act="comments"]').onclick = () => openComments(post);
+  card.querySelector('[data-act="report"]').onclick = () => reportFlow("post", post.id, post.title);
   const unlock = card.querySelector('[data-act="unlock"]');
-  if (unlock) unlock.onclick = () => post.visibility === "ppv" ? unlockPost(post) : go("creator",{handle:a.handle});
+  if (unlock) unlock.onclick = () => {
+    if (post.lock_reason === "age_verification_required") return go("age");
+    if (post.lock_reason === "removed") return;
+    return post.visibility === "ppv" ? unlockPost(post) : go("creator", {handle:a.handle});
+  };
   return card;
 }
 
@@ -372,6 +387,125 @@ async function openLive(ev){
   const back = $(`<button class="btn ghost" style="margin-top:10px">Back</button>`);
   back.onclick = () => render();
   view.appendChild(back);
+}
+
+async function reportFlow(targetType, targetId, label){
+  const reasons = await api("/report-reasons");
+  const view = document.getElementById("view");
+  view.innerHTML = "";
+  view.appendChild($(`<h2>Report</h2>`));
+  view.appendChild($(`<div class="card pad"><div class="sub">${esc(label || targetType)}</div>
+    <p class="note" style="margin-top:8px">Reporting sends this for review. Nothing is removed
+    automatically — a person decides, and the creator can appeal.</p></div>`));
+  const form = $(`<form class="card pad">
+    <label>Why are you reporting this?</label>
+    <select name="reason">${reasons.map(r=>`<option value="${esc(r.reason)}">${esc(r.label)}</option>`).join("")}</select>
+    <label>Anything else we should know?</label>
+    <textarea name="detail" rows="3" maxlength="2000"></textarea>
+    <button class="btn" style="margin-top:14px">Send report</button>
+  </form>`);
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    try{
+      await api("/reports", {method:"POST", body:{
+        target_type: targetType, target_id: targetId,
+        reason: form.reason.value, detail: form.detail.value}});
+      toast("Reported — thank you. We'll review it.");
+      render();
+    }catch(_){}
+  };
+  view.appendChild(form);
+  const back = $(`<button class="btn ghost">Cancel</button>`);
+  back.onclick = () => render();
+  view.appendChild(back);
+}
+
+async function viewAge(view){
+  view.innerHTML = "";
+  const st = await api("/me/age-verification");
+  view.appendChild($(`<h2>Age verification</h2>`));
+  const label = {verified:"Verified", pending:"In review", failed:"Not verified", unverified:"Not started"}[st.status];
+  view.appendChild($(`<div class="card pad">
+    <div class="sub">Status</div><div class="name" style="font-size:18px">${esc(label)}</div>
+    <p class="note" style="margin-top:10px">18+ content stays locked until this is verified.
+    Paying for a post never opens an age gate.</p>
+  </div>`));
+
+  if (st.status === "verified"){
+    view.appendChild($(`<div class="notice good">You're verified. Adult content is visible to you.</div>`));
+  } else if (st.status === "pending"){
+    view.appendChild($(`<div class="notice">Submitted and waiting on review. No identity provider is
+      connected in this build, so an operator has to approve it — nothing here approves itself.</div>`));
+  } else {
+    const form = $(`<form class="card pad">
+      <label>Date of birth</label><input name="dob" type="date" required>
+      <label>Verification reference (optional)</label>
+      <input name="ref" maxlength="120" placeholder="From your ID check">
+      <button class="btn" style="margin-top:14px">Submit</button>
+    </form>`);
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      try{
+        const r = await api("/me/age-verification", {method:"POST",
+          body:{date_of_birth: form.dob.value, document_reference: form.ref.value}});
+        toast(r.message || "Submitted"); go("age");
+      }catch(_){}
+    };
+    view.appendChild(form);
+    view.appendChild($(`<p class="note">We store the outcome and a reference — never your documents.</p>`));
+  }
+  const back = $(`<button class="btn ghost" style="margin-top:10px">Back</button>`);
+  back.onclick = () => go("profile");
+  view.appendChild(back);
+}
+
+async function viewSafety(view){
+  view.innerHTML = "";
+  const [actions, reports, appeals] = await Promise.all([
+    api("/me/actions"), api("/me/reports"), api("/me/appeals")
+  ]);
+
+  view.appendChild($(`<h2>Decisions about your account</h2>`));
+  if (!actions.length) view.appendChild($(`<div class="empty">Nothing has been actioned.</div>`));
+  actions.forEach(a => {
+    const label = {remove_content:"Content removed", suspend_user:"Account suspended",
+      restore_content:"Content restored", restore_user:"Account restored", dismiss:"Report dismissed"}[a.action] || a.action;
+    const card = $(`<div class="card pad">
+      <div class="row"><b>${esc(label)}</b><div class="spacer"></div>
+        <span class="sub">${ago(a.created_at)}</span></div>
+      ${a.reason?`<div class="sub">Reason: ${esc(a.reason)}</div>`:""}
+      ${a.note?`<div class="sub">${esc(a.note)}</div>`:""}
+      ${a.appeal_status?`<div class="notice ${a.appeal_status==="upheld"?"good":""}" style="margin-top:10px">
+          Appeal ${esc(a.appeal_status)}</div>`
+        : a.appealable?`<button class="btn ghost" style="margin-top:10px">Appeal this</button>`
+        : `<div class="sub" style="margin-top:8px">Not appealable.</div>`}
+    </div>`);
+    const btn = card.querySelector("button");
+    if (btn) btn.onclick = () => prompt_("Appeal", [
+      {label:"Why should this be reversed?", html:`<textarea name="body" rows="4" maxlength="2000" required></textarea>`},
+    ], async (form) => {
+      try{
+        await api("/appeals", {method:"POST", body:{action_id: a.id, body: form.body.value}});
+        toast("Appeal filed"); go("safety");
+      }catch(_){}
+    });
+    view.appendChild(card);
+  });
+
+  view.appendChild($(`<h2>Appeals you filed</h2>`));
+  if (!appeals.length) view.appendChild($(`<div class="empty">None.</div>`));
+  appeals.forEach(a => view.appendChild($(`<div class="card pad">
+    <div class="row"><b>${esc(a.action)}</b><div class="spacer"></div><span class="tag">${esc(a.status)}</span></div>
+    <div class="sub">${esc(a.body)}</div>
+    ${a.decision_note?`<div class="sub" style="margin-top:6px">Decision: ${esc(a.decision_note)}</div>`:""}
+  </div>`)));
+
+  view.appendChild($(`<h2>Reports you sent</h2>`));
+  if (!reports.length) view.appendChild($(`<div class="empty">None.</div>`));
+  reports.forEach(r => view.appendChild($(`<div class="card pad row">
+    <div><div class="name" style="font-size:14px">${esc(r.reason_label)}</div>
+      <div class="sub">${esc(r.target_type)} · ${ago(r.created_at)}</div></div>
+    <div class="spacer"></div><span class="tag">${esc(r.status)}</span></div>`)));
 }
 
 /* ---------------------------------------------------------------- screens */
@@ -537,6 +671,10 @@ async function viewCreator(view){
     msg.onclick = () => sendFirstMessage(handle);
     actions.append(follow, msg);
     view.appendChild(actions);
+
+    const flag = $(`<button class="sub" style="display:block;margin:0 auto 14px">⚑ Report this channel</button>`);
+    flag.onclick = () => reportFlow("creator", c.id, "@" + c.handle);
+    view.appendChild(flag);
 
     if (c.tips_enabled){
       const tip = $(`<button class="btn" style="margin-bottom:14px">Send a tip</button>`);
@@ -788,14 +926,52 @@ async function viewEarnings(view){
     view.appendChild(card);
   }
 
-  if (e.available_cents > 0){
-    const b = $(`<button class="btn">Withdraw ${money(e.available_cents)}</button>`);
-    b.onclick = async () => {
-      await api("/me/earnings/payout", {method:"POST", body:{amount_cents:e.available_cents}});
-      toast("Payout recorded — no bank transfer happens in this build");
-      go("earnings");
+  const account = await api("/me/payout-account");
+  view.appendChild($(`<h2>Getting paid</h2>`));
+  if (account.status === "approved"){
+    view.appendChild($(`<div class="notice good">Payout account approved${account.country?` (${esc(account.country)})`:""}.</div>`));
+    if (e.available_cents > 0){
+      const b = $(`<button class="btn" style="margin-top:10px">Withdraw ${money(e.available_cents)}</button>`);
+      b.onclick = async () => {
+        try{
+          await api("/me/earnings/payout", {method:"POST", body:{amount_cents:e.available_cents}});
+          toast("Requested — it stays pending until a provider settles it");
+          go("earnings");
+        }catch(_){}
+      };
+      view.appendChild(b);
+    }
+  } else if (account.status === "pending"){
+    view.appendChild($(`<div class="notice">Your payout details are in review. Withdrawals open once approved.</div>`));
+  } else {
+    if (account.status === "rejected")
+      view.appendChild($(`<div class="notice bad">Rejected${account.note?`: ${esc(account.note)}`:""}. Update and resubmit.</div>`));
+    const form = $(`<form class="card pad">
+      <label>Legal name</label><input name="legal_name" required maxlength="120">
+      <label>Country (2-letter code)</label><input name="country" required minlength="2" maxlength="2" placeholder="US">
+      <button class="btn" style="margin-top:14px">Submit for review</button>
+    </form>`);
+    form.onsubmit = async (e2) => {
+      e2.preventDefault();
+      try{
+        await api("/me/payout-account", {method:"POST",
+          body:{legal_name: form.legal_name.value, country: form.country.value}});
+        toast("Submitted for review"); go("earnings");
+      }catch(_){}
     };
-    view.appendChild(b);
+    view.appendChild(form);
+    view.appendChild($(`<p class="note">Only a name and country are held here. Bank details and tax
+      identifiers belong with the payment provider, not in this app.</p>`));
+  }
+
+  const payouts = await api("/me/payouts");
+  if (payouts.length){
+    view.appendChild($(`<h2>Withdrawals</h2>`));
+    const list = $(`<div class="card pad"></div>`);
+    payouts.forEach(pp => list.appendChild($(`<div class="split">
+      <span>${esc(pp.status)} <span class="sub">${esc(pp.note||"")}</span></span>
+      <b class="money">${money(pp.amount_cents)}</b></div>`)));
+    view.appendChild(list);
   }
 
   view.appendChild($(`<h2>Recent</h2>`));
@@ -822,6 +998,8 @@ async function viewProfile(view){
     ...(me.is_creator ? [["📈 Earnings", () => go("earnings")],
                         ["🎛 My channel", () => go("creator", {handle: me.handle})]] : []),
     ["✉️ Inbox", () => go("inbox")],
+    [`🪪 Age verification${me.age_check_status === "verified" ? " ✓" : ""}`, () => go("age")],
+    ["🛡 Safety & appeals", () => go("safety")],
   ];
   links.forEach(([label, fn]) => {
     const b = $(`<button class="card pad row" style="width:100%;text-align:left"><span>${label}</span>
@@ -892,6 +1070,7 @@ async function viewCreate(view){
       <div data-when="ppv" hidden><label>Price (USD)</label><input name="price" type="number" min="0.5" step="0.5" value="5"></div>
       <div data-when="subscribers" hidden><label>Minimum tier</label>
         <select name="min_tier_id"><option value="">Any tier</option>${tierOptions}</select></div>
+      <label class="row" style="gap:8px"><input type="checkbox" name="adult" style="width:auto"> 18+ content</label>
       <button class="btn" style="margin-top:14px">Publish</button>
     </form>`);
     const sync = () => {
@@ -904,7 +1083,7 @@ async function viewCreate(view){
       const body = {
         kind: form.kind.value, title: form.title.value, body: form.body.value,
         media_url: form.media_url.value || null, preview_url: form.preview_url.value || null,
-        visibility: form.visibility.value,
+        visibility: form.visibility.value, is_adult: form.adult.checked,
       };
       if (body.visibility === "ppv") body.price_cents = Math.round(parseFloat(form.price.value)*100);
       if (body.visibility === "subscribers" && form.min_tier_id.value) body.min_tier_id = Number(form.min_tier_id.value);
@@ -997,6 +1176,7 @@ const SCREENS = {
   auth: viewAuth, home: viewHome, discover: viewDiscover, live: viewLive,
   creator: viewCreator, inbox: viewInbox, thread: viewThread, wallet: viewWallet,
   earnings: viewEarnings, profile: viewProfile, create: viewCreate,
+  safety: viewSafety, age: viewAge,
 };
 
 async function render(){

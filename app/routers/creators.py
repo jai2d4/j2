@@ -72,6 +72,7 @@ async def build_creator_out(
         avatar_url=creator.avatar_url,
         avatar_emoji=owner.avatar_emoji if owner else "🙂",
         is_verified=creator.is_verified,
+        is_adult_channel=creator.is_adult_channel,
         tips_enabled=creator.tips_enabled,
         min_tip_cents=creator.min_tip_cents,
         subscriber_count=await catalog.subscriber_count(session, creator.id),
@@ -119,7 +120,12 @@ async def get_creator(handle: str, session: SessionDep, viewer: OptionalUserDep)
 async def update_my_channel(
     payload: CreatorUpdate, creator: CreatorDep, user: UserDep, session: SessionDep
 ) -> CreatorOut:
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    if updates.get("is_adult_channel") and user.age_check_status != "verified":
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Verify your age before switching on an 18+ channel"
+        )
+    for field, value in updates.items():
         if value is not None:
             setattr(creator, field, value)
     await session.commit()

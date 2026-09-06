@@ -15,14 +15,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from sqlalchemy import select
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.models.orm import CreatorProfile, LedgerEntry, User
+from app.models.orm import CreatorProfile, LedgerEntry, Payout, PayoutAccount, User
 
 
 class PaymentError(Exception):
     """Base for anything that stops a charge."""
+
+
+class PayoutNotPermitted(PaymentError):
+    """Raised when a withdrawal is blocked by identity checks, not by balance."""
 
 
 class InsufficientFunds(PaymentError):
@@ -134,14 +140,42 @@ async def charge(
     return entry
 
 
-async def payout(session: AsyncSession, creator_user: User, amount_cents: int) -> LedgerEntry:
-    """Record a withdrawal request. Marks the money as leaving; no bank transfer happens."""
+async def payout(
+    session: AsyncSession, creator_user: User, amount_cents: int
+) -> tuple[Payout, LedgerEntry]:
+    """Request a withdrawal.
+
+    The money leaves the creator's earnings balance and the request is recorded
+    as `pending`. Nothing here settles it: no bank transfer happens in this build,
+    and a real provider would move a payout to `paid` or `failed` afterwards.
+
+    Withdrawals are gated on an approved payout account. This is the point where
+    a platform's identity and sanctions obligations bite, so the check is here
+    rather than left to the caller.
+    """
     if amount_cents <= 0:
         raise PaymentError("Payout must be positive")
+
+    account = (
+        await session.execute(select(PayoutAccount).where(PayoutAccount.user_id == creator_user.id))
+    ).scalar_one_or_none()
+    if account is None:
+        raise PayoutNotPermitted("Add your payout details before withdrawing")
+    if account.status != "approved":
+        raise PayoutNotPermitted(
+            {
+                "pending": "Your payout details are still being reviewed",
+                "rejected": "Your payout details were rejected — update them and resubmit",
+            }.get(account.status, "Your payout account is not approved")
+        )
+
     if creator_user.earnings_balance_cents < amount_cents:
         raise InsufficientFunds(amount_cents, creator_user.earnings_balance_cents)
 
     creator_user.earnings_balance_cents -= amount_cents
+    record = Payout(user_id=creator_user.id, amount_cents=amount_cents, status="pending")
+    session.add(record)
+
     entry = LedgerEntry(
         kind="payout",
         payer_id=None,
@@ -150,6 +184,21 @@ async def payout(session: AsyncSession, creator_user: User, amount_cents: int) -
         fee_cents=0,
         net_cents=amount_cents,
         note="payout requested",
+    )
+    session.add(entry)
+    return record, entry
+
+
+async def reverse_payout(session: AsyncSession, creator_user: User, record: Payout) -> LedgerEntry:
+    """Put a failed payout back. The failed row stays, so the attempt is on record."""
+    creator_user.earnings_balance_cents += record.amount_cents
+    entry = LedgerEntry(
+        kind="payout_reversal",
+        creator_id=creator_user.creator.id if creator_user.creator else None,
+        gross_cents=record.amount_cents,
+        fee_cents=0,
+        net_cents=record.amount_cents,
+        note=f"payout {record.id} failed",
     )
     session.add(entry)
     return entry

@@ -12,6 +12,7 @@ from app.models.schemas import (
     EarningsLine,
     EarningsOut,
     LedgerOut,
+    PayoutOut,
     PurchaseResult,
     TipRequest,
     TopUpRequest,
@@ -175,19 +176,30 @@ async def earnings(
     )
 
 
-@router.post("/me/earnings/payout", response_model=WalletOut)
+@router.post("/me/earnings/payout", response_model=PayoutOut)
 async def request_payout(
     payload: TopUpRequest, creator: CreatorDep, user: UserDep, session: SessionDep
-) -> WalletOut:
-    """Records the withdrawal against the balance. No bank transfer is performed."""
+) -> PayoutOut:
+    """Request a withdrawal.
+
+    Needs an approved payout account. The amount leaves the earnings balance and
+    the request sits at `pending` — nothing in this build settles it, and no bank
+    transfer happens.
+    """
     try:
-        await payments.payout(session, user, payload.amount_cents)
+        record, _ = await payments.payout(session, user, payload.amount_cents)
+    except payments.PayoutNotPermitted as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     except payments.InsufficientFunds as exc:
         raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(exc)) from exc
     except payments.PaymentError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     await session.commit()
-    return WalletOut(
-        wallet_balance_cents=user.wallet_balance_cents,
-        earnings_balance_cents=user.earnings_balance_cents,
+    await session.refresh(record)
+    return PayoutOut(
+        id=record.id,
+        amount_cents=record.amount_cents,
+        status=record.status,
+        created_at=record.created_at,
+        note="Awaiting settlement",
     )
