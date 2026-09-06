@@ -1,4 +1,5 @@
 import json
+import asyncio
 import sys
 from io import BytesIO
 from types import SimpleNamespace
@@ -10,23 +11,21 @@ from backend.video.frame_extractor import FrameExtractor
 from backend.video.ingestion import VideoStore
 
 
-@pytest.mark.asyncio
-async def test_chunked_video_ingestion_and_metadata(tmp_path):
+def test_chunked_video_ingestion_and_metadata(tmp_path):
     store = VideoStore(tmp_path, max_upload_mb=1)
     upload = UploadFile(filename="Game Film.MKV", file=BytesIO(b"football-film"))
-    result = await store.save(upload)
+    result = asyncio.run(store.save(upload))
     assert result["status"] == "uploaded"
     assert result["filename"] == "Game Film.MKV"
     assert store.get(result["video_id"])["size_bytes"] == 13
     assert len(store.list()) == 1
 
 
-@pytest.mark.asyncio
-async def test_rejects_unsupported_video(tmp_path):
+def test_rejects_unsupported_video(tmp_path):
     store = VideoStore(tmp_path)
     upload = UploadFile(filename="notes.txt", file=BytesIO(b"not video"))
     with pytest.raises(Exception) as error:
-        await store.save(upload)
+        asyncio.run(store.save(upload))
     assert error.value.status_code == 400
 
 
@@ -54,4 +53,3 @@ def test_frame_extraction_retains_frame_and_timestamp(monkeypatch, tmp_path):
     assert [item["timestamp_ms"] for item in result] == [0, 100, 200]
     assert result[0]["width"] == 1280
     assert json.loads((tmp_path / "frames" / "video-1" / "frames.json").read_text())[0]["video_id"] == "video-1"
-
