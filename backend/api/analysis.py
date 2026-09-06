@@ -13,6 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from backend.api.videos import storage_root, video_store
 from backend.video.frame_extractor import FrameExtractor
 from backend.vision.pipeline import analyze_frames
+from backend.football.play_segmenter import PlaySegmenter
 
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
@@ -55,6 +56,14 @@ async def _extract_job(job_id: str, video: dict) -> None:
         )
         job.update(status="tracking", progress=99, message="Finalizing persistent player tracks.")
         _write_job(job)
+        job.update(status="segmenting_plays", progress=99, message="Estimating play boundaries.")
+        _write_job(job)
+        plays = PlaySegmenter().segment(video["video_id"], tracks)
+        football_dir = storage_root / "football" / video["video_id"]
+        football_dir.mkdir(parents=True, exist_ok=True)
+        (football_dir / "plays.json").write_text(
+            json.dumps([play.model_dump() for play in plays], indent=2), encoding="utf-8"
+        )
         job.update(status="completed", progress=100, detection_frames=len(detections),
                    track_count=len(tracks), message="Detection and tracking completed.")
     except Exception as exc:
