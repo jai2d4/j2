@@ -32,6 +32,12 @@ label officials without changing downstream code. Detection and persistent
 track results are stored as JSON under local storage, with centers, bounding
 boxes, velocity, speed, direction, confidence, and original timestamps.
 
+Phase 5 adds manual field calibration with pixel-to-yard conversion, honest
+zero-confidence fallback when automatic calibration is unavailable, jersey OCR
+candidate contracts, and persistent track-to-player assignment endpoints.
+Human confirmations propagate to the stored game track and retain original
+value, corrected value, time, reason, and `source="human"` audit history.
+
 On Windows, run `setup_trugrade.bat` once and then `run_trugrade.bat`.
 
 ## Structure
