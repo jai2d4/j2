@@ -6,3 +6,5 @@ venv/
 .pytest_cache/
 frontend/dist/
 .tmp/
+.testdeps/
+.piptmp/

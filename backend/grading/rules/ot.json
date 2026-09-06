@@ -1,0 +1,54 @@
+{
+  "position": "OT",
+  "version": "1.0",
+  "traits": {
+    "size_length": {
+      "weight": 1,
+      "enabled": true
+    },
+    "foot_quickness": {
+      "weight": 1,
+      "enabled": true
+    },
+    "spatial_awareness": {
+      "weight": 1,
+      "enabled": true
+    },
+    "bend_flex": {
+      "weight": 1,
+      "enabled": true
+    },
+    "anchor": {
+      "weight": 1,
+      "enabled": true
+    },
+    "play_strength": {
+      "weight": 1,
+      "enabled": true
+    },
+    "recovery": {
+      "weight": 1,
+      "enabled": true
+    },
+    "heavy_hands": {
+      "weight": 1,
+      "enabled": true
+    },
+    "punch": {
+      "weight": 1,
+      "enabled": true
+    },
+    "lateral_range": {
+      "weight": 1,
+      "enabled": true
+    },
+    "team_value": {
+      "weight": 1,
+      "enabled": true
+    },
+    "toughness": {
+      "weight": 1,
+      "enabled": true
+    }
+  }
+}

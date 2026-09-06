@@ -1,0 +1,54 @@
+{
+  "position": "JACK",
+  "version": "1.0",
+  "traits": {
+    "size_length": {
+      "weight": 1,
+      "enabled": true
+    },
+    "instincts": {
+      "weight": 1,
+      "enabled": true
+    },
+    "read_react": {
+      "weight": 1,
+      "enabled": true
+    },
+    "lateral_quickness": {
+      "weight": 1,
+      "enabled": true
+    },
+    "play_speed": {
+      "weight": 1,
+      "enabled": true
+    },
+    "coverage_drop": {
+      "weight": 1,
+      "enabled": true
+    },
+    "heavy_hands": {
+      "weight": 1,
+      "enabled": true
+    },
+    "acceleration_burst": {
+      "weight": 1,
+      "enabled": true
+    },
+    "play_strength": {
+      "weight": 1,
+      "enabled": true
+    },
+    "bend_flex": {
+      "weight": 1,
+      "enabled": true
+    },
+    "reactionary_athleticism": {
+      "weight": 1,
+      "enabled": true
+    },
+    "toughness": {
+      "weight": 1,
+      "enabled": true
+    }
+  }
+}

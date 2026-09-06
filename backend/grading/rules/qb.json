@@ -1,0 +1,54 @@
+{
+  "position": "QB",
+  "version": "1.0",
+  "traits": {
+    "vision": {
+      "weight": 1,
+      "enabled": true
+    },
+    "instincts": {
+      "weight": 1,
+      "enabled": true
+    },
+    "quick_minded": {
+      "weight": 1,
+      "enabled": true
+    },
+    "accuracy": {
+      "weight": 1,
+      "enabled": true
+    },
+    "anticipation": {
+      "weight": 1,
+      "enabled": true
+    },
+    "arm_strength": {
+      "weight": 1,
+      "enabled": true
+    },
+    "foot_quickness": {
+      "weight": 1,
+      "enabled": true
+    },
+    "throw_off_platform": {
+      "weight": 1,
+      "enabled": true
+    },
+    "endurance": {
+      "weight": 1,
+      "enabled": true
+    },
+    "red_zone_production": {
+      "weight": 1,
+      "enabled": true
+    },
+    "clutch_production": {
+      "weight": 1,
+      "enabled": true
+    },
+    "toughness": {
+      "weight": 1,
+      "enabled": true
+    }
+  }
+}
