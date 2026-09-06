@@ -30,6 +30,8 @@ whole product:
 | Recurring billing | Subscriptions run 30 days from purchase. Nothing renews them automatically yet — there is no billing scheduler. |
 | Demo data | `scripts/seed_demo.py` invents creators, posts, and prices. Fictional, for demos only. |
 
+Running it on a PC, including the control plane: **[QUICKSTART.md](QUICKSTART.md)**.
+
 ## Run it
 
 ```bash
@@ -168,10 +170,15 @@ If `AXIOME_CONTROL_KEY` is unset those routes refuse **every** caller, so an
 unconfigured deployment is closed rather than open. If `AXIOME_BASE_URL` is
 unset the outbound half is inert and the app runs standalone.
 
-> **The request shapes are this app's proposal, not a contract read off Axiome.**
-> Nothing here has been verified against a running Axiome instance. When the real
-> endpoints are known, change the three path constants and the payload builders
-> at the top of `app/services/axiome.py` — nothing else in the codebase moves.
+**A working controller ships in [`axiome/`](axiome/README.md)** — it implements the
+other side of this contract, so the two halves are verified against each other
+rather than assumed. It is a standalone FastAPI app: run it next to your own
+Axiome, or lift its routes into it.
+
+> The contract itself was defined here, not read off an existing Axiome. If your
+> Axiome already speaks a different shape, change the three path constants and the
+> payload builders at the top of `app/services/axiome.py` — nothing else in this
+> codebase moves.
 
 ## Layout
 

@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Axiome — control plane</title>
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#141821; --panel-2:#1b2130; --line:#252c3b;
+    --text:#eef1f7; --muted:#8e98ad; --accent:#4d8dff; --accent-2:#22d3a6;
+    --ok:#22c55e; --warn:#f5a524; --bad:#ef4444; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  input,select,textarea{font:inherit;width:100%;padding:10px 12px;border-radius:10px;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text)}
+  input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  label{display:block;font-size:12px;color:var(--muted);margin:12px 0 5px;font-weight:600}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;
+    background:var(--panel-2);padding:2px 6px;border-radius:6px;word-break:break-all}
+  a{color:var(--accent)}
+
+  header{display:flex;align-items:center;gap:14px;padding:16px 24px;
+    border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:10}
+  .logo{font-weight:800;font-size:19px;letter-spacing:-.02em}
+  .logo span{color:var(--accent)}
+  .spacer{flex:1}
+  main{max-width:1120px;margin:0 auto;padding:24px}
+  h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:26px 0 12px}
+  h2:first-child{margin-top:0}
+
+  .btn{padding:10px 15px;border-radius:10px;font-weight:650;font-size:14px;
+    background:var(--accent);color:#fff}
+  .btn.ghost{background:var(--panel-2);border:1px solid var(--line)}
+  .btn.danger{background:var(--panel-2);border:1px solid #52222a;color:#ff9d9d}
+  .btn.sm{padding:7px 11px;font-size:13px}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .card.click{cursor:pointer}
+  .card.click:hover{border-color:var(--accent)}
+  .row{display:flex;align-items:center;gap:10px}
+  .muted{color:var(--muted);font-size:13px}
+
+  .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--muted)}
+  .dot.ok{background:var(--ok);box-shadow:0 0 0 3px rgba(34,197,94,.16)}
+  .dot.degraded{background:var(--warn);box-shadow:0 0 0 3px rgba(245,165,36,.16)}
+  .dot.unreachable{background:var(--bad);box-shadow:0 0 0 3px rgba(239,68,68,.16)}
+
+  .chip{display:inline-block;font-size:11px;padding:3px 8px;border-radius:6px;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--muted);margin:3px 3px 0 0}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px;margin-top:14px}
+  .metric{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px}
+  .metric b{display:block;font-size:19px;font-variant-numeric:tabular-nums}
+  .metric span{font-size:11px;color:var(--muted)}
+  .metric.alert b{color:var(--warn)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;
+    text-transform:uppercase;letter-spacing:.06em;padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+
+  .modal{position:fixed;inset:0;background:rgba(4,6,10,.72);display:grid;place-items:center;
+    z-index:50;padding:20px}
+  .modal .card{max-width:520px;width:100%;max-height:88vh;overflow:auto}
+  .banner{border-radius:10px;padding:11px 13px;font-size:13px;line-height:1.5;margin-top:12px;
+    background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--muted)}
+  .banner.ok{border-left-color:var(--ok)}
+  .banner.warn{border-left-color:var(--warn)}
+  .banner.bad{border-left-color:var(--bad)}
+  .toast{position:fixed;right:20px;bottom:20px;z-index:60;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:10px;padding:12px 16px;font-size:14px;max-width:380px}
+  .toast.bad{border-color:#52222a}
+  .empty{text-align:center;color:var(--muted);padding:48px 20px}
+  .spark{display:flex;align-items:flex-end;gap:2px;height:34px;margin-top:12px}
+  .spark i{flex:1;background:var(--accent);border-radius:2px;min-height:2px;opacity:.75}
+  .spark i.bad{background:var(--bad)}
+  .spark i.warn{background:var(--warn)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">AXI<span>OME</span></div>
+  <div class="muted" id="subtitle">control plane</div>
+  <div class="spacer"></div>
+  <button class="btn ghost sm" id="refresh-all">Refresh</button>
+  <button class="btn sm" id="add-app">+ Add app</button>
+</header>
+<main id="view"><div class="empty">Loading…</div></main>
+
+<script>
+const state = { key: localStorage.getItem("axiome_key") || "", apps: [], overview: null, open: null };
+
+const $ = (h) => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstChild; };
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ago = (iso) => {
+  if (!iso) return "never";
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime())/1000);
+  if (s < 60) return Math.floor(s) + "s ago";
+  if (s < 3600) return Math.floor(s/60) + "m ago";
+  if (s < 86400) return Math.floor(s/3600) + "h ago";
+  return Math.floor(s/86400) + "d ago";
+};
+const titleize = (k) => k.replace(/_/g, " ").replace(/\bcents\b/, "").trim();
+// "1 urgent report", not "1 urgent reports".
+const plural = (n, label) => `${n} ${n === 1 ? label.replace(/s$/, "") : label}`;
+const fmt = (k, v) => (typeof v === "number" && k.endsWith("_cents"))
+  ? "$" + (v/100).toFixed(2).replace(/\.00$/,"") : String(v);
+// Counts that mean "someone needs to do something".
+const ALERT_KEYS = ["urgent_reports","open_reports","open_appeals","kyc_pending","payouts_pending"];
+
+function toast(msg, bad=false){
+  document.querySelectorAll(".toast").forEach(t => t.remove());
+  const el = $(`<div class="toast ${bad?"bad":""}">${esc(msg)}</div>`);
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+async function api(path, {method="GET", body}={}){
+  const headers = {"X-Admin-Key": state.key};
+  if (body) headers["Content-Type"] = "application/json";
+  const res = await fetch("/api/admin" + path, {method, headers, body: body?JSON.stringify(body):undefined});
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok){
+    if (res.status === 401){ state.key = ""; localStorage.removeItem("axiome_key"); render(); }
+    throw new Error(typeof data.detail === "string" ? data.detail : "Request failed");
+  }
+  return data;
+}
+
+function modal(node){
+  const wrap = $(`<div class="modal"></div>`);
+  wrap.appendChild(node);
+  wrap.onclick = (e) => { if (e.target === wrap) wrap.remove(); };
+  document.body.appendChild(wrap);
+  return wrap;
+}
+
+/* ------------------------------------------------------------------ add app */
+function addAppDialog(){
+  const card = $(`<div class="card">
+    <h2 style="margin-top:0">Add an app</h2>
+    <p class="muted">Point Axiome at any app that exposes a control surface. It checks the
+      connection now and tells you what it found.</p>
+    <label>Name</label><input name="name" placeholder="Livephoria" autofocus>
+    <label>Base URL</label><input name="base_url" placeholder="http://127.0.0.1:8000">
+    <label>Control key <span style="font-weight:400">— the app's AXIOME_CONTROL_KEY</span></label>
+    <input name="control_key" placeholder="leave blank if the app has none">
+    <label>Control path</label><input name="control_path" value="/api/v1/control">
+    <div class="row" style="margin-top:16px">
+      <button class="btn ghost sm" data-act="test">Test connection</button>
+      <div class="spacer"></div>
+      <button class="btn ghost sm" data-act="cancel">Cancel</button>
+      <button class="btn sm" data-act="save">Add app</button>
+    </div>
+    <div data-slot="result"></div>
+  </div>`);
+
+  const values = () => ({
+    name: card.querySelector('[name="name"]').value.trim(),
+    base_url: card.querySelector('[name="base_url"]').value.trim().replace(/\/+$/, ""),
+    control_key: card.querySelector('[name="control_key"]').value.trim(),
+    control_path: card.querySelector('[name="control_path"]').value.trim() || "/api/v1/control",
+  });
+  const slot = card.querySelector('[data-slot="result"]');
+
+  card.querySelector('[data-act="test"]').onclick = async () => {
+    const v = values();
+    if (!v.base_url) return toast("Enter a base URL first", true);
+    slot.innerHTML = `<div class="banner">Testing…</div>`;
+    try{
+      const p = await api("/probe", {method:"POST", body:{
+        base_url:v.base_url, control_key:v.control_key, control_path:v.control_path}});
+      if (!p.reachable)
+        slot.innerHTML = `<div class="banner bad"><b>Nothing answered.</b><br>${esc(p.error||"")}
+          <br><span class="muted">Is it running, and is the URL reachable from this machine?</span></div>`;
+      else if (p.unauthorized)
+        slot.innerHTML = `<div class="banner warn"><b>Reachable, key rejected.</b><br>
+          The app answered but refused the control key. Check its AXIOME_CONTROL_KEY.</div>`;
+      else if (!p.authenticated)
+        slot.innerHTML = `<div class="banner warn"><b>Reachable, no control surface.</b><br>
+          ${esc(p.error||"It did not answer on " + v.control_path + "/status")}</div>`;
+      else
+        slot.innerHTML = `<div class="banner ok"><b>Connected.</b>
+          ${p.status? esc(p.status.app||"") + " v" + esc(p.status.version||"") : ""}
+          · ${Math.round(p.latency_ms||0)}ms</div>`;
+    }catch(e){ slot.innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; }
+  };
+
+  card.querySelector('[data-act="cancel"]').onclick = () => card.closest(".modal").remove();
+  card.querySelector('[data-act="save"]').onclick = async () => {
+    const v = values();
+    if (!v.name || !v.base_url) return toast("Name and base URL are required", true);
+    try{
+      const r = await api("/apps", {method:"POST", body:v});
+      card.closest(".modal").remove();
+      showAppKey(r);
+      await load();
+    }catch(e){ toast(e.message, true); }
+  };
+  modal(card);
+}
+
+function showAppKey(result){
+  const cls = result.ok ? "ok" : result.reachable ? "warn" : "bad";
+  const card = $(`<div class="card">
+    <h2 style="margin-top:0">${esc(result.app.name)} added</h2>
+    <div class="banner ${cls}">${esc(result.detail)}</div>
+    <p class="muted" style="margin-top:16px">Axiome can already poll this app. To have it
+      <em>push</em> to Axiome as well, put this key in its environment and restart it —
+      it is shown once.</p>
+    <label>App key</label>
+    <code style="display:block;padding:11px">${esc(result.app_key)}</code>
+    <label>Environment</label>
+    <code style="display:block;padding:11px;white-space:pre-wrap">AXIOME_BASE_URL=${esc(location.origin)}
+AXIOME_APP_KEY=${esc(result.app_key)}</code>
+    <div class="row" style="margin-top:16px">
+      <button class="btn ghost sm" data-act="copy">Copy env</button>
+      <div class="spacer"></div>
+      <button class="btn sm" data-act="done">Done</button>
+    </div>
+  </div>`);
+  card.querySelector('[data-act="copy"]').onclick = () => {
+    navigator.clipboard?.writeText(
+      `AXIOME_BASE_URL=${location.origin}\nAXIOME_APP_KEY=${result.app_key}`);
+    toast("Copied");
+  };
+  card.querySelector('[data-act="done"]').onclick = () => card.closest(".modal").remove();
+  modal(card);
+}
+
+/* ------------------------------------------------------------------ views */
+function appCard(app){
+  const metrics = app.metrics || {};
+  const alerts = ALERT_KEYS.filter(k => Number(metrics[k]) > 0);
+  const shown = Object.entries(metrics).filter(([k,v]) => typeof v === "number").slice(0, 4);
+  const card = $(`<div class="card click">
+    <div class="row">
+      <span class="dot ${esc(app.status)}"></span>
+      <b>${esc(app.name)}</b>
+      <div class="spacer"></div>
+      <span class="muted">${app.version?"v"+esc(app.version):""}</span>
+    </div>
+    <div class="muted" style="margin-top:6px">${esc(app.base_url || "push only")}</div>
+    <div class="muted">${esc(app.status_detail || app.status)} · seen ${ago(app.last_seen_at)}</div>
+    ${alerts.length?`<div class="banner warn" style="margin-top:10px">Needs attention:
+      ${alerts.map(k=>esc(plural(metrics[k], titleize(k)))).join(" · ")}</div>`:""}
+    ${shown.length?`<div class="metrics">${shown.map(([k,v])=>`<div class="metric">
+      <b>${esc(fmt(k,v))}</b><span>${esc(titleize(k))}</span></div>`).join("")}</div>`:""}
+  </div>`);
+  card.onclick = () => openApp(app.slug);
+  return card;
+}
+
+async function openApp(slug){
+  const [app, samples, events] = await Promise.all([
+    api(`/apps/${slug}`), api(`/apps/${slug}/samples?limit=40`), api(`/events?slug=${slug}&limit=25`)
+  ]);
+  const metrics = app.metrics || {};
+  const card = $(`<div class="card" style="max-width:640px">
+    <div class="row">
+      <span class="dot ${esc(app.status)}"></span><b style="font-size:18px">${esc(app.name)}</b>
+      <div class="spacer"></div>
+      <button class="btn ghost sm" data-act="refresh">Refresh</button>
+    </div>
+    <div class="muted" style="margin-top:6px">
+      ${esc(app.slug)} · ${esc(app.base_url||"push only")} · seen ${ago(app.last_seen_at)}
+      ${app.last_latency_ms?` · ${Math.round(app.last_latency_ms)}ms`:""}
+    </div>
+    ${app.status_detail?`<div class="banner ${app.status==="unreachable"?"bad":"warn"}">${esc(app.status_detail)}</div>`:""}
+    <div>${(app.capabilities||[]).map(c=>`<span class="chip">${esc(c)}</span>`).join("")}</div>
+    ${samples.length?`<div class="spark">${samples.map(s=>{
+        const h = Math.min(100, 12 + (s.latency_ms||10));
+        return `<i class="${s.status==="ok"?"":s.status==="unreachable"?"bad":"warn"}" style="height:${h}%"></i>`;
+      }).join("")}</div><div class="muted" style="font-size:11px">last ${samples.length} checks</div>`:""}
+    ${Object.keys(metrics).length?`<div class="metrics">${
+      Object.entries(metrics).filter(([k,v])=>typeof v==="number").map(([k,v])=>
+        `<div class="metric ${ALERT_KEYS.includes(k)&&v>0?"alert":""}">
+          <b>${esc(fmt(k,v))}</b><span>${esc(titleize(k))}</span></div>`).join("")}</div>`:""}
+    <h2>Controls</h2>
+    <div class="row" style="flex-wrap:wrap;gap:8px">
+      <button class="btn ${app.maintenance?"":"ghost"} sm" data-act="maint">
+        ${app.maintenance?"Bring back online":"Put in maintenance"}</button>
+      <button class="btn ghost sm" data-act="rotate">New app key</button>
+      ${app.public_url?`<a class="btn ghost sm" href="${esc(app.public_url)}" target="_blank" rel="noopener">Open app</a>`:""}
+      <div class="spacer"></div>
+      <button class="btn danger sm" data-act="forget">Forget</button>
+    </div>
+    ${events.length?`<h2>Activity</h2><table><tbody>${events.map(e=>`<tr>
+      <td>${esc(e.event)}</td>
+      <td class="muted">${esc(JSON.stringify(e.data).slice(0,70))}</td>
+      <td class="muted" style="white-space:nowrap">${ago(e.at)}</td></tr>`).join("")}</tbody></table>`:""}
+    <div class="row" style="margin-top:16px"><div class="spacer"></div>
+      <button class="btn sm" data-act="close">Close</button></div>
+  </div>`);
+
+  const wrap = modal(card);
+  card.querySelector('[data-act="close"]').onclick = () => wrap.remove();
+  card.querySelector('[data-act="refresh"]').onclick = async () => {
+    try{ await api(`/apps/${slug}/refresh`, {method:"POST"}); wrap.remove(); await load(); openApp(slug); }
+    catch(e){ toast(e.message, true); }
+  };
+  card.querySelector('[data-act="maint"]').onclick = async () => {
+    try{
+      await api(`/apps/${slug}/maintenance`, {method:"POST",
+        body:{enabled: !app.maintenance, message:"Paused from Axiome."}});
+      toast(app.maintenance ? "Back online" : "In maintenance");
+      wrap.remove(); await load(); openApp(slug);
+    }catch(e){ toast(e.message, true); }
+  };
+  card.querySelector('[data-act="rotate"]').onclick = async () => {
+    try{ const r = await api(`/apps/${slug}/rotate-key`, {method:"POST"}); wrap.remove(); showAppKey(r); }
+    catch(e){ toast(e.message, true); }
+  };
+  card.querySelector('[data-act="forget"]').onclick = async () => {
+    if (!confirm(`Forget ${app.name}? The app itself is untouched.`)) return;
+    try{ await api(`/apps/${slug}`, {method:"DELETE"}); wrap.remove(); toast("Removed"); await load(); }
+    catch(e){ toast(e.message, true); }
+  };
+}
+
+function keyScreen(view){
+  view.innerHTML = "";
+  const card = $(`<div class="card" style="max-width:460px;margin:60px auto">
+    <h2 style="margin-top:0">Unlock Axiome</h2>
+    <p class="muted">Paste the admin key. It is printed in the server log when Axiome starts,
+      or set it yourself with <code>ADMIN_KEY</code>.</p>
+    <label>Admin key</label><input name="key" type="password" autofocus>
+    <button class="btn" style="width:100%;margin-top:14px">Unlock</button>
+  </div>`);
+  card.querySelector("button").onclick = async () => {
+    state.key = card.querySelector('[name="key"]').value.trim();
+    try{ await api("/overview"); localStorage.setItem("axiome_key", state.key); render(); }
+    catch(_){ toast("That key was rejected", true); }
+  };
+  card.querySelector("input").onkeydown = (e) => { if (e.key === "Enter") card.querySelector("button").click(); };
+  view.appendChild(card);
+}
+
+async function load(){
+  [state.apps, state.overview] = await Promise.all([api("/apps"), api("/overview")]);
+  paint();
+}
+
+function paint(){
+  const view = document.getElementById("view");
+  view.innerHTML = "";
+  const o = state.overview || {};
+  document.getElementById("subtitle").textContent =
+    `${o.apps || 0} app${o.apps === 1 ? "" : "s"} · polling every ${o.poll_seconds}s`;
+
+  if (!state.apps.length){
+    view.appendChild($(`<div class="empty">
+      <p><b>No apps yet.</b></p>
+      <p>Add one and Axiome will check the connection and hand you the key it needs.</p>
+    </div>`));
+    const b = $(`<button class="btn" style="display:block;margin:0 auto">+ Add your first app</button>`);
+    b.onclick = addAppDialog;
+    view.appendChild(b);
+    return;
+  }
+  view.appendChild($(`<h2>Apps</h2>`));
+  const grid = $(`<div class="grid"></div>`);
+  state.apps.forEach(a => grid.appendChild(appCard(a)));
+  view.appendChild(grid);
+  renderEvents(view);
+}
+
+async function renderEvents(view){
+  const events = await api("/events?limit=20").catch(() => []);
+  if (!events.length) return;
+  view.appendChild($(`<h2>Recent activity</h2>`));
+  view.appendChild($(`<div class="card" style="padding:4px 8px"><table>
+    <thead><tr><th>App</th><th>Event</th><th>Detail</th><th>When</th></tr></thead>
+    <tbody>${events.map(e => `<tr>
+      <td>${esc(e.app_slug)}</td><td>${esc(e.event)}</td>
+      <td class="muted">${esc(JSON.stringify(e.data).slice(0,60))}</td>
+      <td class="muted" style="white-space:nowrap">${ago(e.at)}</td>
+    </tr>`).join("")}</tbody></table></div>`));
+}
+
+async function render(){
+  const view = document.getElementById("view");
+  if (!state.key) return keyScreen(view);
+  try{ await load(); }
+  catch(e){ view.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+document.getElementById("add-app").onclick = () => state.key ? addAppDialog() : toast("Unlock first", true);
+document.getElementById("refresh-all").onclick = async () => {
+  if (!state.key) return;
+  try{
+    await Promise.all(state.apps.filter(a => a.base_url)
+      .map(a => api(`/apps/${a.slug}/refresh`, {method:"POST"}).catch(() => null)));
+    await load(); toast("Refreshed");
+  }catch(e){ toast(e.message, true); }
+};
+// Keep the board current without a page reload.
+setInterval(() => { if (state.key && !document.querySelector(".modal")) load().catch(() => {}); }, 15000);
+render();
+</script>
+</body>
+</html>
