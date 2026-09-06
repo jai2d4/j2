@@ -8,3 +8,8 @@ frontend/dist/
 .tmp/
 .testdeps/
 .piptmp/
+backend/storage/videos/*
+backend/storage/frames/*
+backend/storage/jobs/*
+backend/storage/metadata/*
+!backend/storage/**/.gitkeep

@@ -17,6 +17,14 @@ production API remain unchanged. The audit found no React `src/lib/engine.ts`
 or fantasy scoring implementation in this repository, so nothing was moved or
 fabricated; a recovery note is retained under `backend/legacy/`.
 
+Phase 3 adds chunked local uploads at `POST /api/videos/upload`, a local video
+catalog at `GET /api/videos`, background extraction jobs at
+`POST /api/analysis/start/{video_id}`, and durable progress polling at
+`GET /api/analysis/status/{job_id}`. OpenCV samples frames at configurable
+`ANALYSIS_FPS` (10 by default) while retaining source frame numbers and exact
+timestamps. Uploaded film remains local and the upload request never waits for
+frame extraction.
+
 On Windows, run `setup_trugrade.bat` once and then `run_trugrade.bat`.
 
 ## Structure
