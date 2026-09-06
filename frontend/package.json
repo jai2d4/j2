@@ -1,0 +1,11 @@
+{
+  "name": "trugrade-frontend",
+  "private": true,
+  "version": "2.0.0-phase1",
+  "type": "module",
+  "scripts": {
+    "dev": "python -m http.server 5173",
+    "typecheck": "node scripts/check.mjs",
+    "build": "node scripts/build.mjs"
+  }
+}

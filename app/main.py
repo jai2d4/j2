@@ -130,7 +130,13 @@ async def health():
     return {"status": "ok", "model": settings.GEMINI_MODEL, "env": settings.APP_ENV}
 
 
-_DEMO_PATH = Path(__file__).resolve().parent.parent / "frontend_demo" / "truth_report_demo.html"
+@app.get("/api/health", include_in_schema=False)
+async def phase_one_health():
+    """Phase 1 compatibility endpoint for the reorganized application."""
+    return await health()
+
+
+_FRONTEND_PATH = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -138,7 +144,7 @@ async def truth_report_panel():
     """Serves the Truth Report demo panel from the app's own origin, so its
     fetch() calls resolve as same-origin — works identically on localhost
     and on the deployed URL, no separate static host needed."""
-    return _DEMO_PATH.read_text()
+    return _FRONTEND_PATH.read_text(encoding="utf-8")
 
 
 @app.post("/api/v1/scout/metric-sieve", response_model=SieveResult, dependencies=[Depends(require_api_key)])

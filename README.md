@@ -2,9 +2,20 @@
 
 # TRU Scouting Engine
 
+## TruGrade V2 migration status
+
+Phase 1 establishes a safe standalone `frontend/` and stable `backend/`
+entrypoint without changing the current interface or API behavior. The
+existing FastAPI implementation remains under `app/` during the phased
+migration. No Phase 2 grading-engine changes are included yet.
+
+On Windows, run `setup_trugrade.bat` once and then `run_trugrade.bat`.
+
 ## Structure
 ```
 tru-scouting-engine/
+├── frontend/                 # current standalone interface and build checks
+├── backend/                  # stable V2 entrypoint and phased modules
 ├── .env.example              # env mapping (copy to .env)
 ├── requirements.txt
 ├── Dockerfile                # container build for deployment (Render/Railway/Fly/anywhere)
